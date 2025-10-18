@@ -18,6 +18,6 @@ play -q -n synth \
      sine $CARRIER_FREQUENCY \
      sine $FREQUENCY_RIGHT \
      reverb 40 50 100 pitch -31.76665 & 
-play -q -n -c2 synth brownnoise band -n 100 100 band -n 500 200 fade h 1 60 1 reverb 40 50 100 pitch -31.76665 &
+play -q -n -c2 synth brownnoise band -n 100 100 band -n 500 200 reverb 40 50 100 pitch -31.76665 &
 
 wait
