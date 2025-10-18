@@ -5,7 +5,7 @@
 <br><br>
 brainwave-entrainment in the terminal
 <br><br>
-This script will generate brown noise and delta binaural beats for 59 minutes per session. Press ctrl-c at any time to exit...
+This script will generate rain and delta binaural beats. Press ctrl-c at any time to exit...
 <br><br>
 Please install sox first:
 <br><br>
