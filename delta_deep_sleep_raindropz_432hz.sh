@@ -5,7 +5,7 @@ MAX=800
 
 # Define the range
 MINTIME=0.1
-MAXTIME=2
+MAXTIME=10
 
 # Calculate the range difference
 RANGE_DIFF=$(echo "$MAXTIME - $MINTIME" | bc -l)
