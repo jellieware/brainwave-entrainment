@@ -8,5 +8,6 @@ This script will generate rain and delta binaural beats. Press ctrl-c at any tim
 Please install sox first:
 <br><br>
 "apt-get install sox"
+"apt-get install bc"
 <br><br>
 Thank you!
