@@ -5,8 +5,8 @@
 MIN=400
 MAX=800
 
-MINTIME=0.2
-MAXTIME=5
+MINTIME=5
+MAXTIME=15
 
 tempomin=0.5
 tempomax=1.5
