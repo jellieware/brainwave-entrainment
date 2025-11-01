@@ -4,7 +4,7 @@
 
 
 <br><br>
-This script will generate rain and delta binaural beats. Press ctrl-c at any time to exit...
+This script will generate a rain thunderstorm and delta binaural beats. Press ctrl-c at any time to exit...
 <br><br>
 Please install sox and bc first:
 <br><br>
