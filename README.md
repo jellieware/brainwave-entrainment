@@ -1,6 +1,6 @@
 # brainwave-entrainment
 
-<img width="637" height="637" alt="1000754665" src="https://github.com/user-attachments/assets/71ef7eb8-7b28-4f69-9942-4d4510e076c5" />
+<img width="1024" height="1024" alt="1000771320" src="https://github.com/user-attachments/assets/205cbd09-9acb-46c7-a23d-675840fa14c7" />
 
 
 <br><br>
