@@ -118,7 +118,7 @@ play -q -n -c1 synth pinknoise \
         flanger 0.5 0.8 50 0.5 2 sine \
         tremolo 0.1 50 \
         lowpass 40 \
-        vol 2.0 \
+        vol 1.2 \
         reverb 50 50 100 100 100 0 > /dev/null 2>&1 & # Add reverb for space and power
 
 
