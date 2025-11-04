@@ -1,4 +1,9 @@
 #!/bin/bash
+#author: alex terranova
+#date:11/04/2025
+#name:rumblefish
+#version:1.0
+#description: Brainwave-Entrainment
 input=""
 ZMIN=400
 ZMAX=1200
@@ -17,7 +22,7 @@ function chime_sound() {
     # We use multiple 'synth' effects piped together to layer slightly detuned
     # sine waves, creating a richer, more bell-like tone.
     # The 'fade' effect gives it a natural attack and a long, logarithmic decay.
-    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.05 &
+    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.06 &
 }
 
 thundertimeMIN=100
@@ -37,8 +42,8 @@ RANGElength=$((thunderlengthMAX - thunderlengthMIN + 1))
 MIN=400
 MAX=800
 
-MINTIME=0.2
-MAXTIME=5
+MINTIME=0.08
+MAXTIME=0.12
 
 tempomin=0.5
 tempomax=1.5
@@ -67,8 +72,8 @@ DURATION=0.2
 # Starting and ending frequencies for the pitch-bend.
 # Adjust these values to change the character of the drop.
 # A higher start frequency creates a "thinner" sounding drop.
-START_FREQ=100
-END_FREQ=600
+START_FREQ=30
+END_FREQ=300
 
 # Volume level (a multiplier from 0 to 1).
 # A lower value might sound more natural.
@@ -162,6 +167,60 @@ chime_sound $ZRANDOM_NUMBER 0.2 -5
 sleep $ZRAND_FLOAT
 
 done &
+#bubbly
+while [[ "$input" != "q" ]]; do
+
+RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
+RANDOM_NUMBERX=$((RANDOM % RANGEX + BAMBOOTMIN))
+  RAND_0_TO_1X=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+  RAND_FLOATX=$(echo "scale=2; $tempomin + ($RAND_0_TO_1X * $RANGE_DIFFX)" | bc -l)
+  
+  RAND_0_TO_1XX=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+  RAND_FLOATXX=$(echo "scale=2; $pitchmin + ($RAND_0_TO_1XX * $RANGE_DIFFXX)" | bc -l)
+  
+  
+  
+  RAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+  RAND_FLOAT=$(echo "scale=2; $MINTIME + ($RAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
+  
+play -q -n synth 0.05 \
+  sine "${START_FREQ}-${RANDOM_NUMBER}" \
+  fade h 0.5 0.01 0.05 \
+  vol 1 \
+  lowpass 25 &
+  
+
+  sleep $RAND_FLOAT
+
+done &
+
+#bubbly
+while [[ "$input" != "q" ]]; do
+
+RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
+RANDOM_NUMBERX=$((RANDOM % RANGEX + BAMBOOTMIN))
+  RAND_0_TO_1X=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+  RAND_FLOATX=$(echo "scale=2; $tempomin + ($RAND_0_TO_1X * $RANGE_DIFFX)" | bc -l)
+  
+  RAND_0_TO_1XX=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+  RAND_FLOATXX=$(echo "scale=2; $pitchmin + ($RAND_0_TO_1XX * $RANGE_DIFFXX)" | bc -l)
+  
+  
+  
+  RAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+  RAND_FLOAT=$(echo "scale=2; $MINTIME + ($RAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
+  
+play -q -n synth 0.08 \
+  sine "${START_FREQ}-${RANDOM_NUMBER}" \
+  fade h 0.5 0.01 0.08 \
+  vol 1 \
+  lowpass 35 &
+  
+
+  sleep $RAND_FLOAT
+
+done &
+
 
 while true; do
 echo "Enter 'q' to exit..."
