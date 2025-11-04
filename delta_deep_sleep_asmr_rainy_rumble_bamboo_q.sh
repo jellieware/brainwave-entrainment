@@ -17,7 +17,7 @@ function chime_sound() {
     # We use multiple 'synth' effects piped together to layer slightly detuned
     # sine waves, creating a richer, more bell-like tone.
     # The 'fade' effect gives it a natural attack and a long, logarithmic decay.
-    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.04 &
+    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.05 &
 }
 
 thundertimeMIN=100
@@ -163,6 +163,7 @@ sleep $ZRAND_FLOAT
 
 done &
 
+while true; do
 echo "Enter 'q' to exit..."
 read -n 1 input_char
 
@@ -176,9 +177,10 @@ if [[ "$input_char" == "q" ]]; then
     sleep 2
     exit 0 # Exit with a success status
 else
+    echo ""
     echo "Continuing script."
     # Add the rest of your script's logic here
     echo "You entered: $input_char"
 fi
-
+done
 wait
