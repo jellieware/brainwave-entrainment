@@ -22,7 +22,7 @@ function chime_sound() {
     # We use multiple 'synth' effects piped together to layer slightly detuned
     # sine waves, creating a richer, more bell-like tone.
     # The 'fade' effect gives it a natural attack and a long, logarithmic decay.
-    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.06 &
+    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.5 &
 }
 
 thundertimeMIN=100
@@ -123,8 +123,8 @@ echo "Beat frequency: ${BEAT_FREQUENCY}Hz"
 play -q -n synth \
      sine $CARRIER_FREQUENCY \
      sine $FREQUENCY_RIGHT \
-     reverb 40 50 100 pitch -31.76665 vol 0.01 & 
-play -q -n -c2 synth pinknoise mix band -n 9000 1800 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 0.1 \
+     reverb 40 50 100 pitch -31.76665 vol 0.05 & 
+play -q -n -c2 synth pinknoise mix band -n 9000 1800 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 0.5 \
 chorus $GAIN_IN $GAIN_OUT "$BASE_DELAY_MS" "$DECAY_MS" "$SPEED_HZ" "$DEPTH_MS" -t &
 
 # --- Main command ---
