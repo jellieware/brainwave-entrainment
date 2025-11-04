@@ -6,7 +6,7 @@ Audio Preview:
 <br><br>
 <a href="https://jellieware.rf.gd/previewbrainwave.ogg">Demo</a>
 <br><br>
-This script will generate a rain thunderstorm with bamboo chimes and delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
+This script will generate a rain thunderstorm with bamboo chimes and delta binaural beats. Use headphones with caution! Press "q" at any time to exit.
 <br><br>
 *Note: No Audio files are used, all the sounds are synthetic and random.
 <br><br>
