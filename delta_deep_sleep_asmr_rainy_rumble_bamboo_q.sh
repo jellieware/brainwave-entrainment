@@ -5,10 +5,10 @@
 #version:1.0
 #description: Brainwave-Entrainment
 input=""
-ZMIN=400
+ZMIN=600
 ZMAX=1200
-ZMINTIME=0.01
-ZMAXTIME=0.5
+ZMINTIME=0.2
+ZMAXTIME=2
 ZRANGE_DIFF=$(echo "$ZMAXTIME - $ZMINTIME" | bc -l)
 ZRANGE=$((ZMAX - ZMIN + 1))
 
@@ -22,10 +22,10 @@ function chime_sound() {
     # We use multiple 'synth' effects piped together to layer slightly detuned
     # sine waves, creating a richer, more bell-like tone.
     # The 'fade' effect gives it a natural attack and a long, logarithmic decay.
-    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.2 &
+    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.5 &
 }
 
-thundertimeMIN=100
+thundertimeMIN=50
 thundertimeMAX=200
 
 # Calculate the range size (inclusive)
@@ -42,8 +42,8 @@ RANGElength=$((thunderlengthMAX - thunderlengthMIN + 1))
 MIN=400
 MAX=800
 
-MINTIME=0.08
-MAXTIME=0.12
+MINTIME=0.2
+MAXTIME=1
 
 tempomin=0.5
 tempomax=1.5
@@ -167,6 +167,42 @@ chime_sound $ZRANDOM_NUMBER 0.2 -5
 sleep $ZRAND_FLOAT
 
 done &
+while [[ "$input" != "q" ]]; do
+
+ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+ZRAND_FLOAT=$(echo "scale=2; $ZMINTIME + ($ZRAND_0_TO_1 * $ZRANGE_DIFF)" | bc -l)
+ZRANDOM_NUMBER=$((RANDOM % ZRANGE + ZMIN))  
+chime_sound $ZRANDOM_NUMBER 0.2 -5
+sleep $ZRAND_FLOAT
+
+done &
+while [[ "$input" != "q" ]]; do
+
+ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+ZRAND_FLOAT=$(echo "scale=2; $ZMINTIME + ($ZRAND_0_TO_1 * $ZRANGE_DIFF)" | bc -l)
+ZRANDOM_NUMBER=$((RANDOM % ZRANGE + ZMIN))  
+chime_sound $ZRANDOM_NUMBER 0.2 -5
+sleep $ZRAND_FLOAT
+
+done &
+while [[ "$input" != "q" ]]; do
+
+ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+ZRAND_FLOAT=$(echo "scale=2; $ZMINTIME + ($ZRAND_0_TO_1 * $ZRANGE_DIFF)" | bc -l)
+ZRANDOM_NUMBER=$((RANDOM % ZRANGE + ZMIN))  
+chime_sound $ZRANDOM_NUMBER 0.2 -5
+sleep $ZRAND_FLOAT
+
+done &
+while [[ "$input" != "q" ]]; do
+
+ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+ZRAND_FLOAT=$(echo "scale=2; $ZMINTIME + ($ZRAND_0_TO_1 * $ZRANGE_DIFF)" | bc -l)
+ZRANDOM_NUMBER=$((RANDOM % ZRANGE + ZMIN))  
+chime_sound $ZRANDOM_NUMBER 0.2 -5
+sleep $ZRAND_FLOAT
+
+done &
 #bubbly
 while [[ "$input" != "q" ]]; do
 
@@ -186,7 +222,7 @@ RANDOM_NUMBERX=$((RANDOM % RANGEX + BAMBOOTMIN))
 play -q -n synth 0.05 \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade h 0.5 0.01 0.05 \
-  vol 0.5 \
+  vol 1 \
   lowpass 25 &
   
 
@@ -213,7 +249,7 @@ RANDOM_NUMBERX=$((RANDOM % RANGEX + BAMBOOTMIN))
 play -q -n synth 0.08 \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade h 0.5 0.01 0.08 \
-  vol 0.5 \
+  vol 1 \
   lowpass 35 &
   
 
