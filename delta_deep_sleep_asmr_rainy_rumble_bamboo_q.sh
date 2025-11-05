@@ -6,9 +6,9 @@
 #description: Brainwave-Entrainment
 input=""
 ZMIN=600
-ZMAX=1200
+ZMAX=1400
 ZMINTIME=0.2
-ZMAXTIME=2
+ZMAXTIME=1
 ZRANGE_DIFF=$(echo "$ZMAXTIME - $ZMINTIME" | bc -l)
 ZRANGE=$((ZMAX - ZMIN + 1))
 
@@ -123,7 +123,7 @@ echo "Beat frequency: ${BEAT_FREQUENCY}Hz"
 play -q -n synth \
      sine $CARRIER_FREQUENCY \
      sine $FREQUENCY_RIGHT \
-     reverb 40 50 100 pitch -31.76665 vol 0.01 & 
+     reverb 40 50 100 pitch -31.76665 vol 0.03 & 
 play -q -n -c2 synth pinknoise mix band -n 9000 1800 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 0.5 \
 chorus $GAIN_IN $GAIN_OUT "$BASE_DELAY_MS" "$DECAY_MS" "$SPEED_HZ" "$DEPTH_MS" -t &
 
@@ -203,59 +203,9 @@ chime_sound $ZRANDOM_NUMBER 0.2 -5
 sleep $ZRAND_FLOAT
 
 done &
-#bubbly
-while [[ "$input" != "q" ]]; do
 
-RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
-RANDOM_NUMBERX=$((RANDOM % RANGEX + BAMBOOTMIN))
-  RAND_0_TO_1X=$(echo "scale=2; $RANDOM / 32767" | bc -l)
-  RAND_FLOATX=$(echo "scale=2; $tempomin + ($RAND_0_TO_1X * $RANGE_DIFFX)" | bc -l)
-  
-  RAND_0_TO_1XX=$(echo "scale=2; $RANDOM / 32767" | bc -l)
-  RAND_FLOATXX=$(echo "scale=2; $pitchmin + ($RAND_0_TO_1XX * $RANGE_DIFFXX)" | bc -l)
-  
-  
-  
-  RAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
-  RAND_FLOAT=$(echo "scale=2; $MINTIME + ($RAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
-  
-play -q -n synth 0.05 \
-  sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade h 0.5 0.01 0.05 \
-  vol 1 \
-  lowpass 25 &
-  
 
-  sleep $RAND_FLOAT
 
-done &
-
-#bubbly
-while [[ "$input" != "q" ]]; do
-
-RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
-RANDOM_NUMBERX=$((RANDOM % RANGEX + BAMBOOTMIN))
-  RAND_0_TO_1X=$(echo "scale=2; $RANDOM / 32767" | bc -l)
-  RAND_FLOATX=$(echo "scale=2; $tempomin + ($RAND_0_TO_1X * $RANGE_DIFFX)" | bc -l)
-  
-  RAND_0_TO_1XX=$(echo "scale=2; $RANDOM / 32767" | bc -l)
-  RAND_FLOATXX=$(echo "scale=2; $pitchmin + ($RAND_0_TO_1XX * $RANGE_DIFFXX)" | bc -l)
-  
-  
-  
-  RAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
-  RAND_FLOAT=$(echo "scale=2; $MINTIME + ($RAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
-  
-play -q -n synth 0.08 \
-  sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade h 0.5 0.01 0.08 \
-  vol 1 \
-  lowpass 35 &
-  
-
-  sleep $RAND_FLOAT
-
-done &
 
 
 while true; do
