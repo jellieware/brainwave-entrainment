@@ -7,7 +7,7 @@
 input=""
 ZMIN=400
 ZMAX=1200
-ZMINTIME=0
+ZMINTIME=0.01
 ZMAXTIME=0.5
 ZRANGE_DIFF=$(echo "$ZMAXTIME - $ZMINTIME" | bc -l)
 ZRANGE=$((ZMAX - ZMIN + 1))
@@ -22,7 +22,7 @@ function chime_sound() {
     # We use multiple 'synth' effects piped together to layer slightly detuned
     # sine waves, creating a richer, more bell-like tone.
     # The 'fade' effect gives it a natural attack and a long, logarithmic decay.
-    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.5 &
+    play -q -n -c1 synth "$duration" sine "$freq" fade l 0 0.2 "$duration" lowpass 100 vol 0.2 &
 }
 
 thundertimeMIN=100
@@ -72,7 +72,7 @@ DURATION=0.2
 # Starting and ending frequencies for the pitch-bend.
 # Adjust these values to change the character of the drop.
 # A higher start frequency creates a "thinner" sounding drop.
-START_FREQ=30
+START_FREQ=100
 END_FREQ=300
 
 # Volume level (a multiplier from 0 to 1).
@@ -123,7 +123,7 @@ echo "Beat frequency: ${BEAT_FREQUENCY}Hz"
 play -q -n synth \
      sine $CARRIER_FREQUENCY \
      sine $FREQUENCY_RIGHT \
-     reverb 40 50 100 pitch -31.76665 vol 0.05 & 
+     reverb 40 50 100 pitch -31.76665 vol 0.01 & 
 play -q -n -c2 synth pinknoise mix band -n 9000 1800 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 0.5 \
 chorus $GAIN_IN $GAIN_OUT "$BASE_DELAY_MS" "$DECAY_MS" "$SPEED_HZ" "$DEPTH_MS" -t &
 
@@ -142,7 +142,7 @@ play -q -n -c1 synth pinknoise \
         flanger 0.5 0.8 50 0.5 2 sine \
         tremolo 0.1 50 \
         lowpass 40 \
-        vol 1.0 \
+        vol 1.2 \
         reverb 50 50 100 100 100 0 > /dev/null 2>&1 & # Add reverb for space and power
 
 
@@ -186,7 +186,7 @@ RANDOM_NUMBERX=$((RANDOM % RANGEX + BAMBOOTMIN))
 play -q -n synth 0.05 \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade h 0.5 0.01 0.05 \
-  vol 1 \
+  vol 0.5 \
   lowpass 25 &
   
 
@@ -213,7 +213,7 @@ RANDOM_NUMBERX=$((RANDOM % RANGEX + BAMBOOTMIN))
 play -q -n synth 0.08 \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade h 0.5 0.01 0.08 \
-  vol 1 \
+  vol 0.5 \
   lowpass 35 &
   
 
