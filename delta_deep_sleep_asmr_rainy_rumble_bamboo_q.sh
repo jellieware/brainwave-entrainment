@@ -8,9 +8,9 @@ input=""
 ZMIN=600
 ZMAX=1400
 ZMINTIME=0.2
-ZMAXTIME=1
+ZMAXTIME=3
 ZRANGE_DIFF=$(echo "$ZMAXTIME - $ZMINTIME" | bc -l)
-ZRANGE=$((ZMAX - ZMIN + 1))
+ZRANGE=$((ZMAX - ZMIN + 1)) 
 
 function chime_sound() {
     local freq=$1
