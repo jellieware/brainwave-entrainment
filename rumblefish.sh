@@ -5,9 +5,9 @@
 #version:1.0
 #description: Brainwave-Entrainment
 input=""
-ZMIN=600
-ZMAX=1400
-ZMINTIME=0.2
+ZMIN=900
+ZMAX=1600
+ZMINTIME=1
 ZMAXTIME=5
 ZRANGE_DIFF=$(echo "$ZMAXTIME - $ZMINTIME" | bc -l)
 ZRANGE=$((ZMAX - ZMIN + 1)) 
@@ -42,8 +42,8 @@ RANGElength=$((thunderlengthMAX - thunderlengthMIN + 1))
 MIN=300
 MAX=600
 
-MINTIME=0.2
-MAXTIME=0.6
+MINTIME=0.5
+MAXTIME=1
 
 tempomin=0.5
 tempomax=1.5
@@ -204,10 +204,31 @@ sleep $ZRAND_FLOAT
 
 done &
 
+while [[ "$input" != "q" ]]; do
+
+ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+ZRAND_FLOAT=$(echo "scale=2; $ZMINTIME + ($ZRAND_0_TO_1 * $ZRANGE_DIFF)" | bc -l)
+ZRANDOM_NUMBER=$((RANDOM % ZRANGE + ZMIN))  
+chime_sound $ZRANDOM_NUMBER 0.2 -5
+sleep $ZRAND_FLOAT
+
+done &
+
+while [[ "$input" != "q" ]]; do
+
+ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+ZRAND_FLOAT=$(echo "scale=2; $ZMINTIME + ($ZRAND_0_TO_1 * $ZRANGE_DIFF)" | bc -l)
+ZRANDOM_NUMBER=$((RANDOM % ZRANGE + ZMIN))  
+chime_sound $ZRANDOM_NUMBER 0.2 -5
+sleep $ZRAND_FLOAT
+
+done &
 
 
 
-volz=0.02
+
+
+volz=0.01
 
 
 
