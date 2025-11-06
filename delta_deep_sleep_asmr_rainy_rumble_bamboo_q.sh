@@ -124,7 +124,7 @@ play -q -n synth \
      sine $CARRIER_FREQUENCY \
      sine $FREQUENCY_RIGHT \
      reverb 40 50 100 pitch -31.76665 vol 0.05 & 
-play -q -n -c2 synth pinknoise mix band -n 9000 1800 tremolo 2000 1 lowpass 200 reverb 40 50 100 pitch -31.76665 vol 1 \
+play -q -n -c2 synth pinknoise mix band -n 9000 500 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 1 \
 chorus $GAIN_IN $GAIN_OUT "$BASE_DELAY_MS" "$DECAY_MS" "$SPEED_HZ" "$DEPTH_MS" -t &
 
 # --- Main command ---
