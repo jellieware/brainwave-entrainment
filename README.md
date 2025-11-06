@@ -5,7 +5,7 @@
 <br><br>
 Audio Preview:
 <br><br>
-<a href="https://jellieware.rf.gd/rumblefishpreview.wav">Demo</a>
+<a href="https://jellieware.rf.gd/rumblefishpreview.flac">Demo</a>
 <br><br>
 This script will generate a rain thunderstorm with bamboo chimes and delta binaural beats. Use headphones with caution! Press "q" at any time to exit.
 <br><br>
