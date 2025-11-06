@@ -1,6 +1,7 @@
 # brainwave-entrainment
 
-<img width="1024" height="1024" alt="1000771321" src="https://github.com/user-attachments/assets/adeade7b-2d0c-4087-bca2-63b8a4dae3c2" />
+<img width="1024" height="1024" alt="1000772461" src="https://github.com/user-attachments/assets/32cea55a-7592-4731-837a-f9d73821473d" />
+
 <br><br>
 Audio Preview:
 <br><br>
