@@ -2,7 +2,7 @@
 #author: alex terranova
 #date:11/06/2025
 #name:rumblefishzen
-#version:2.0
+#version:2.2
 #description: Brainwave-Entrainment
 input=""
 ZMIN=900
@@ -39,8 +39,8 @@ thunderlengthMAX=10
 # Calculate the range size (inclusive)
 RANGElength=$((thunderlengthMAX - thunderlengthMIN + 1))
 
-MIN=1000
-MAX=1600
+MIN=4000
+MAX=5000
 
 MINTIME=0.2
 MAXTIME=1
@@ -73,7 +73,7 @@ DURATION=0.2
 # Adjust these values to change the character of the drop.
 # A higher start frequency creates a "thinner" sounding drop.
 START_FREQ=50
-END_FREQ=600
+END_FREQ=100
 
 # Volume level (a multiplier from 0 to 1).
 # A lower value might sound more natural.
@@ -115,7 +115,7 @@ CARRIER_FREQUENCY=45  # Base frequency for one channel (e.g., 150 Hz)
 # Calculate the second frequency for the binaural beat
 FREQUENCY_RIGHT=$((CARRIER_FREQUENCY + BEAT_FREQUENCY))
 
-echo "Playing Now..."
+echo "Now Playing: Brainwave Entrainment"
 echo "Left channel: ${CARRIER_FREQUENCY}Hz | Right channel: ${FREQUENCY_RIGHT}Hz"
 echo "Beat frequency: ${BEAT_FREQUENCY}Hz"
 
@@ -123,8 +123,8 @@ echo "Beat frequency: ${BEAT_FREQUENCY}Hz"
 play -q -n synth \
      sine $CARRIER_FREQUENCY \
      sine $FREQUENCY_RIGHT \
-     reverb 40 50 100 pitch -31.76665 vol 0.05 & 
-     play -q -n -c2 synth brownnoise mix band -n 9000 1000 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 0.5 &
+     reverb 40 50 100 pitch -31.76665 vol 0.02 & 
+     play -q -n -c2 synth brownnoise mix band -n 9000 1000 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 0.4 &
 
 
 while [[ "$input" != "q" ]]; do
@@ -240,7 +240,7 @@ done &
 
 
 
-volz=0.1
+volz=0.5
 
 
 
@@ -253,12 +253,13 @@ ZRAND_FLOAT=$(echo "scale=2; $MINTIME + ($ZRAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
 RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade l 0 1.1 \
+  fade 0 0 $ZRAND_FLOAT \
   tremolo 0.1 10 \
   reverb 50 50 100 100 \
   flanger 0 2 2 3 3 0.5 \
   vol $volz \
-  lowpass 50 > /dev/null 2>&1 &
+  lowpass 50 \
+  highpass 500 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
 done &
 while [[ "$input" != "q" ]]; do
@@ -267,12 +268,13 @@ ZRAND_FLOAT=$(echo "scale=2; $MINTIME + ($ZRAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
 RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade l 0 1.1 \
+  fade 0 0 $ZRAND_FLOAT \
   tremolo 0.1 10 \
   reverb 50 50 100 100 \
   flanger 0 2 2 3 3 0.5 \
   vol $volz \
-  lowpass 35 > /dev/null 2>&1 &
+  lowpass 50 \
+  highpass 500 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
 done &
 while [[ "$input" != "q" ]]; do
@@ -281,12 +283,13 @@ ZRAND_FLOAT=$(echo "scale=2; $MINTIME + ($ZRAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
 RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade l 0 1.1 \
+  fade 0 0 $ZRAND_FLOAT \
   tremolo 0.1 10 \
   reverb 50 50 100 100 \
   flanger 0 2 2 3 3 0.5 \
   vol $volz \
-  lowpass 35 > /dev/null 2>&1 &
+  lowpass 50 \
+  highpass 500 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
 done &
 while [[ "$input" != "q" ]]; do
@@ -295,12 +298,13 @@ ZRAND_FLOAT=$(echo "scale=2; $MINTIME + ($ZRAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
 RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade l 0 1.1 \
+  fade 0 0 $ZRAND_FLOAT \
   tremolo 0.1 10 \
   reverb 50 50 100 100 \
   flanger 0 2 2 3 3 0.5 \
   vol $volz \
-  lowpass 35 > /dev/null 2>&1 &
+  lowpass 50 \
+  highpass 500 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
 done &
 while [[ "$input" != "q" ]]; do
@@ -309,26 +313,13 @@ ZRAND_FLOAT=$(echo "scale=2; $MINTIME + ($ZRAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
 RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade l 0 1.1 \
+  fade 0 0 $ZRAND_FLOAT \
   tremolo 0.1 10 \
   reverb 50 50 100 100 \
   flanger 0 2 2 3 3 0.5 \
   vol $volz \
-  lowpass 35 > /dev/null 2>&1 &
-  sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
-done &
-while [[ "$input" != "q" ]]; do
-ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
-ZRAND_FLOAT=$(echo "scale=2; $MINTIME + ($ZRAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
-RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
-play -q -n synth $ZRAND_FLOAT \
-  sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade l 0 1.1 \
-  tremolo 0.1 10 \
-  reverb 50 50 100 100 \
-  flanger 0 2 2 3 3 0.5 \
-  vol $volz \
-  lowpass 35 > /dev/null 2>&1 &
+  lowpass 50 \
+  highpass 500 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
 done &
 
