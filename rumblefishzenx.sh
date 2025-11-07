@@ -124,7 +124,7 @@ play -q -n synth \
      sine $CARRIER_FREQUENCY \
      sine $FREQUENCY_RIGHT \
      reverb 40 50 100 pitch -31.76665 vol 0.02 & 
-     play -q -n -c2 synth brownnoise mix band -n 9000 1000 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 0.4 &
+     play -q -n -c2 synth brownnoise mix band -n 9000 1000 tremolo 2000 1 lowpass 1000 reverb 40 50 100 pitch -31.76665 vol 0.2 &
 
 
 while [[ "$input" != "q" ]]; do
@@ -240,7 +240,7 @@ done &
 
 
 
-volz=0.5
+volz=1
 
 
 
