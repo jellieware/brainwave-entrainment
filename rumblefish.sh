@@ -42,8 +42,8 @@ RANGElength=$((thunderlengthMAX - thunderlengthMIN + 1))
 MIN=300
 MAX=600
 
-MINTIME=0.5
-MAXTIME=1
+MINTIME=0.2
+MAXTIME=0.6
 
 tempomin=0.5
 tempomax=1.5
@@ -228,7 +228,7 @@ done &
 
 
 
-volz=0.01
+volz=0.05
 
 
 
@@ -242,6 +242,21 @@ RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade l 0 1.1 \
+  tremolo 0.1 10 \
+  reverb 50 50 100 100 \
+  vol $volz \
+  lowpass 50 > /dev/null 2>&1 &
+  sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
+done &
+while [[ "$input" != "q" ]]; do
+ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
+ZRAND_FLOAT=$(echo "scale=2; $MINTIME + ($ZRAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
+RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
+play -q -n synth $ZRAND_FLOAT \
+  sine "${START_FREQ}-${RANDOM_NUMBER}" \
+  fade l 0 1.1 \
+  tremolo 0.1 10 \
+  reverb 50 50 100 100 \
   vol $volz \
   lowpass 35 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
@@ -253,6 +268,8 @@ RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade l 0 1.1 \
+  tremolo 0.1 10 \
+  reverb 50 50 100 100 \
   vol $volz \
   lowpass 35 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
@@ -264,6 +281,8 @@ RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade l 0 1.1 \
+  tremolo 0.1 10 \
+  reverb 50 50 100 100 \
   vol $volz \
   lowpass 35 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
@@ -275,6 +294,8 @@ RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade l 0 1.1 \
+  tremolo 0.1 10 \
+  reverb 50 50 100 100 \
   vol $volz \
   lowpass 35 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
@@ -286,17 +307,8 @@ RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $ZRAND_FLOAT \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade l 0 1.1 \
-  vol $volz \
-  lowpass 35 > /dev/null 2>&1 &
-  sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
-done &
-while [[ "$input" != "q" ]]; do
-ZRAND_0_TO_1=$(echo "scale=2; $RANDOM / 32767" | bc -l)
-ZRAND_FLOAT=$(echo "scale=2; $MINTIME + ($ZRAND_0_TO_1 * $RANGE_DIFF)" | bc -l)
-RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
-play -q -n synth $ZRAND_FLOAT \
-  sine "${START_FREQ}-${RANDOM_NUMBER}" \
-  fade l 0 1.1 \
+  tremolo 0.1 10 \
+  reverb 50 50 100 100 \
   vol $volz \
   lowpass 35 > /dev/null 2>&1 &
   sleep $(echo "scale=2; (($ZRAND_FLOAT + 0.2))" | bc)
