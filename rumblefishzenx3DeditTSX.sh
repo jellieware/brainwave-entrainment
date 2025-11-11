@@ -245,8 +245,8 @@ play -q -n synth $DURATION \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   fade 0.01 0 "$DURATION" "$DURATION" \
   pitch -300 \
-  vol 0.2 \
-  lowpass 160 > /dev/null 2>&1 
+  vol 0.1 \
+  lowpass 360 > /dev/null 2>&1 
   
 
   
@@ -254,12 +254,16 @@ play -q -n synth $DURATION \
   
 done &
 }
+bubbly &
+bubbly &
+bubbly &
+bubbly &
+bubbly &
+bubbly &
+bubbly &
+bubbly &
 
-bubbly &
-bubbly &
-bubbly &
-bubbly &
-bubbly &
+
 
 chimex &
 chimex &
