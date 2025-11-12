@@ -211,13 +211,14 @@ RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $DURATION \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   vol $random_float \
-  fade 0.005 $DURATION 0.005\
+  fade h 0.005 $DURATION 0.005\
   gain -50 \
   bass +5 100 \
+  highpass 100 \
   remix 0 1 \
   lowpass $DD > /dev/null 2>&1 
 
-  sleep $( echo "scale=2; 0.2 + 0.5 * $RANDOM / 32767" | bc )
+  sleep $( echo "scale=2; 0.2 + 1 * $RANDOM / 32767" | bc )
   
 done &
 }
@@ -250,14 +251,15 @@ RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
 play -q -n synth $DURATION \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   vol $random_float \
-  fade 0.005 $DURATION 0.005 \
+  fade h 0.005 $DURATION 0.005 \
   gain -50 \
   bass +5 100 \
+  highpass 100 \
   remix 1 0 \
   lowpass $DD > /dev/null 2>&1 
   
 
-  sleep $( echo "scale=2; 0.2 + 0.5* $RANDOM / 32767" | bc )
+  sleep $( echo "scale=2; 0.2 + 1* $RANDOM / 32767" | bc )
   
 
   
