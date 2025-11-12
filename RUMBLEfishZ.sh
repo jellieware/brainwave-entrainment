@@ -2,7 +2,7 @@
 #author: alex terranova
 #date:11/08/2025
 #name:rumblefishzen
-#version:2.5xluv3D
+#version:2.5xluv3Dlex
 #description: Brainwave-Entrainment
 input=""
 ZMIN=500
@@ -213,6 +213,7 @@ play -q -n synth $DURATION \
   vol $random_float \
   fade h 0.005 $DURATION 0.005\
   gain -50 \
+  reverb 50 50 100 100 20 \
   bass +5 100 \
   highpass 100 \
   remix 0 1 \
@@ -253,6 +254,7 @@ play -q -n synth $DURATION \
   vol $random_float \
   fade h 0.005 $DURATION 0.005 \
   gain -50 \
+  reverb 50 50 100 100 20 \
   bass +5 100 \
   highpass 100 \
   remix 1 0 \
