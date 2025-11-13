@@ -17,7 +17,7 @@ function chime_soundr() {
     local duration=$2
     local gain=$3
 
-    play -q -n -b 24 -r 44100  -t pulseaudio -c1 --buffer 20000  synth "$duration" sine "$freq" fade 0.001 0 0.2 "$duration" lowpass 100 vol 1 remix 0 1 > /dev/null 2>&1 &
+    play -q -n -b 24 -r 44100  -t pulseaudio -c1 --buffer 60000  synth "$duration" sine "$freq" fade 0.001 0 0.2 "$duration" lowpass 100 vol 1 remix 0 1 > /dev/null 2>&1 &
 }
 function chime_soundl() {
     local freq=$1
@@ -25,7 +25,7 @@ function chime_soundl() {
     local gain=$3
 
 
-    play -q -n -b 24 -r 44100 -t pulseaudio -c1 --buffer 20000  synth "$duration" sine "$freq" fade 0.001 0 0.2 "$duration" lowpass 100 vol 1 remix 1 0 > /dev/null 2>&1 &
+    play -q -n -b 24 -r 44100 -t pulseaudio -c1 --buffer 60000  synth "$duration" sine "$freq" fade 0.001 0 0.2 "$duration" lowpass 100 vol 1 remix 1 0 > /dev/null 2>&1 &
 }
 
 MIN=250
@@ -112,7 +112,7 @@ random_float=$(echo "scale=1; $scaled_int / 10000" | bc)
 DURATION=$( echo "scale=2; 0.2 + 0.4 * $RANDOM / 32767" | bc )
 
 RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
-play -q -n -b 24 -r 44100 -t pulseaudio --buffer 20000  synth $DURATION \
+play -q -n -b 24 -r 44100 -t pulseaudio --buffer 60000  synth $DURATION \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   vol $random_float \
   fade 0.05 0 0.05 \
@@ -151,7 +151,7 @@ random_float=$(echo "scale=1; $scaled_int / 10000" | bc)
 DURATION=$( echo "scale=2; 0.2 + 0.4 * $RANDOM / 32767" | bc )
 
 RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
-play -q -n -b 24 -r 44100 -t pulseaudio --buffer 20000  synth $DURATION \
+play -q -n -b 24 -r 44100 -t pulseaudio --buffer 60000  synth $DURATION \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   vol $random_float \
   fade 0.05 0 0.05 \
@@ -193,7 +193,7 @@ random_float=$(echo "scale=1; $scaled_int / 10000" | bc)
 DURATION=$( echo "scale=2; 0.2 + 0.4 * $RANDOM / 32767" | bc )
 
 RANDOM_NUMBER=$((RANDOM % RANGE + MIN))
-play -q -n -b 24 -r 44100 -t pulseaudio --buffer 20000 synth $DURATION \
+play -q -n -b 24 -r 44100 -t pulseaudio --buffer 60000 synth $DURATION \
   sine "${START_FREQ}-${RANDOM_NUMBER}" \
   vol $random_float \
   fade 0.05 0 0.05 \
