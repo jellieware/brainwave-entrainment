@@ -216,21 +216,13 @@ play -q -n synth $DURATION \
   
 done &
 }
-bubblyl &
-bubblyl &
-bubblyl &
+
 bubblyl &
 bubblyl &
 bubblyl &
 bubblyr &
 bubblyr &
 bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
-bubblylr &
-bubblylr &
-bubblylr &
 bubblylr &
 bubblylr &
 bubblylr &
