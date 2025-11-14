@@ -9,7 +9,9 @@ YouTube Audio Preview:
 <br><br>
 This script will generate a gentle water flow with bamboo chimes and delta binaural beats. Use headphones with caution! Press "q" at any time to exit.
 <br><br>
-*Note: No Audio files are used, all the sounds are synthetic and random. If you change filename also change it on line:324 (so the script exits properly)
+*Note: No Audio files are used, all the sounds are synthetic and random.
+<br><br>
+If you change the filename also change it on line:252 (so the script exits properly)
 <br><br>
 Please install sox and bc first:
 <br><br>
