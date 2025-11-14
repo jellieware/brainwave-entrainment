@@ -5,7 +5,7 @@
 <br><br>
 YouTube Audio Preview:
 <br><br>
-<a href="https://youtu.be/R_ie-Yp81m0?feature=shared">Demo</a>
+<a href="https://youtu.be/Yf-T0-yzIAM?si=58b4gPUArknE8j8v">Demo</a>
 <br><br>
 This script will generate a gentle water flow with bamboo chimes and delta binaural beats. Use headphones with caution! Press "q" at any time to exit.
 <br><br>
