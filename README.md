@@ -18,4 +18,8 @@ Please install sox and bc first:
 "apt-get install sox"
 "apt-get install bc"
 <br><br>
+To run:
+<br><br>
+"bash BWEpuresynth.sh"
+<br><br>
 Thank you!
