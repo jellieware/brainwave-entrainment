@@ -20,7 +20,7 @@ Please install sox and bc first:
 <br><br>
 If youre on a Linux laptop/desktop you might need:
 <br><br>
-
+apt install libsox-fmt-all
 <br><br>
 To run:
 <br><br>
