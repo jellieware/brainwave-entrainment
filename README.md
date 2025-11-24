@@ -7,7 +7,7 @@ YouTube Audio Preview:
 <br><br>
 <a href="https://youtu.be/Yf-T0-yzIAM?si=58b4gPUArknE8j8v">Demo</a>
 <br><br>
-This script will generate a gentle water flow with bamboo chimes and delta binaural beats. Use headphones with caution! Press "q" at any time to exit.
+This script will generate a gentle water flow with bamboo chimes. Use headphones with caution! Press "q" at any time to exit.
 <br><br>
 *Note: No Audio files are used, all the sounds are synthetic and random.
 <br><br>
@@ -18,8 +18,12 @@ Please install sox and bc first:
 "apt-get install sox"
 "apt-get install bc"
 <br><br>
+If youre on a Linux laptop/desktop you might need:
+<br><br>
+
+<br><br>
 To run:
 <br><br>
-"bash BWEpuresynth.sh"
+"bash BWE.sh"
 <br><br>
 Thank you!
