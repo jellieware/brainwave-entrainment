@@ -11,7 +11,7 @@ This script will generate a gentle water flow with bamboo chimes. Use headphones
 <br><br>
 *Note: No Audio files are used, all the sounds are synthetic and random.
 <br><br>
-If you change the filename also change it on line:300 (so the script exits properly)
+If you change the filename also change it on line:318 (so the script exits properly)
 <br><br>
 Please install sox and bc first:
 <br><br>
@@ -24,6 +24,6 @@ apt install libsox-fmt-all
 <br><br>
 To run:
 <br><br>
-"bash BWE.sh"
+"bash BWEXPFOXY.sh"
 <br><br>
 Thank you!
