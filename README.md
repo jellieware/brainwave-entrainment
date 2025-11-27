@@ -24,6 +24,6 @@ apt install libsox-fmt-all
 <br><br>
 To run:
 <br><br>
-"bash BWEXPFOXY.sh"
+"bash BWEXP2FOXES.sh"
 <br><br>
 Thank you!
