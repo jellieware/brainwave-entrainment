@@ -5,7 +5,7 @@
 <br><br>
 YouTube Audio Preview:
 <br><br>
-<a href="https://youtu.be/Yf-T0-yzIAM?si=58b4gPUArknE8j8v">Demo</a>
+<a href="http://jellieware.rf.gd/audiopreview.mp3">Audio</a>
 <br><br>
 This script will generate a gentle water flow with bamboo chimes. Use headphones with caution! Press "q" at any time to exit.
 <br><br>
