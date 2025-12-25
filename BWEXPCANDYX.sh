@@ -109,10 +109,10 @@ FREQUENCY_RIGHT=$((CARRIER_FREQUENCY + BEAT_FREQUENCY))
 
 echo "Now Playing: Brainwave Entrainment"
 # Generate and play the binaural beat using the `play` command
-#play -q -n synth \
-#     sine $CARRIER_FREQUENCY \
- #    sine $FREQUENCY_RIGHT \
-#     reverb 50 50 100 100 20 vol 0.1 > /dev/null 2>&1 & 
+play -q -n synth \
+    sine $CARRIER_FREQUENCY \
+    sine $FREQUENCY_RIGHT \
+    reverb 50 50 100 100 20 vol 0.01 > /dev/null 2>&1 & 
 
 play -q   -n synth pinknoise gain -20 vol 1 reverb 50 50 100 100 20 lowpass 200 highpass 800 &
 
