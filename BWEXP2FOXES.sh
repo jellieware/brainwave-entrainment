@@ -17,7 +17,7 @@ function chime_soundr() {
     local duration=$2
     local gain=$3
 
-    play -q -n  -r 44100   -c1  synth "$duration" sine "$freq" fade 0.001 0 0.2 "$duration" lowpass 100 vol 1 remix 0 1 > /dev/null 2>&1 &
+    play -q -n  -r 44100  -c1  synth "$duration" sine "$freq" fade 0.001 0 0.2 "$duration" lowpass 100 vol 2 remix 0 1 > /dev/null 2>&1 &
 }
 function chime_soundl() {
     local freq=$1
@@ -25,7 +25,7 @@ function chime_soundl() {
     local gain=$3
 
 
-    play -q -n  -r 44100  -c1  synth "$duration" sine "$freq" fade 0.001 0 0.2 "$duration" lowpass 100 vol 1 remix 1 0 > /dev/null 2>&1 &
+    play -q -n  -r 44100   -c1  synth "$duration" sine "$freq" fade 0.001 0 0.2 "$duration" lowpass 100 vol 2 remix 1 0 > /dev/null 2>&1 &
 }
 
 MIN=2000
@@ -52,7 +52,46 @@ echo "Now Playing: Brainwave Entrainment"
  #    sine $FREQUENCY_RIGHT \
 #     reverb 50 50 100 100 20 vol 0.1 > /dev/null 2>&1 & 
 
-play -q  -n synth brownnoise gain -20 vol 1 reverb 50 50 100 100 20 lowpass 200 highpass 600 &
+play -q   -n synth pinknoise gain -20 vol 2 reverb 50 50 100 100 20 lowpass 200 highpass 800 &
+
+function interlude() {
+  while [[ "$input" != "q" ]]; do
+  DURA=$((1 + RANDOM % 60))
+  DURAZ=$((1 + RANDOM % 5))
+  play -q  -n synth $DURA pinknoise gain -20 vol 0.02 reverb 50 50 100 100 20 fade h 0.5 "$DURA" "$DURA" lowpass 4000 highpass 200 &
+  sleep $DURAZ
+  done &
+}
+
+interlude &
+
+function thunder() {
+  thunderlengthMIN=6
+  thunderlengthMAX=10
+
+# Calculate the range size (inclusive)
+RANGElength=$((thunderlengthMAX - thunderlengthMIN + 1))
+  while [[ "$input" != "q" ]]; do
+  DURAW=$((1 + RANDOM % 60))
+RANDOM_length=$(( (RANDOM % RANGElength) + thunderlengthMIN ))
+
+play -q -n -c1 synth pinknoise \
+        fade h 0.5 $RANDOM_length $RANDOM_length \
+        flanger 0.5 0.8 50 0.5 2 sine \
+        tremolo 0.1 50 \
+        lowpass 40 \
+        vol 1.0 \
+        reverb 50 50 100 100 100 0 > /dev/null 2>&1 & # Add reverb for space and power
+
+
+
+
+sleep $DURAW
+done &
+  
+}
+
+thunder &
 
 function chimexr() {
 while [[ "$input" != "q" ]]; do
@@ -267,45 +306,10 @@ play -q -n  -r 44100  synth $DURATION \
 done &
 }
 
-bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
-bubblyr &
+bubblylr &
+bubblyl &
 bubblyr &
 
-
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-bubblyl &
-
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
-bubblylr &
 
 while true; do
 echo "Enter 'q' to exit..."
