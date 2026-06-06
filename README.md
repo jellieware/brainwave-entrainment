@@ -7,7 +7,7 @@ Audio Preview:
 <br><br>
 <a href="http://jellieware.rf.gd/audiopreview.mp3">Audio</a>
 <br><br>
-This script will generate a babbling brook. Use headphones with caution! Press "q" at any time to exit.
+This script will generate a babbling brook. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
 *Note: No Audio files are used, all the sounds are synthetic and random.
 <br><br>
