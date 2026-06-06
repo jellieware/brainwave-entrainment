@@ -5,10 +5,10 @@
 <br><br>
 
 <br><br>
-This script will generate a babbling brook. Use headphones with caution! Press "ctrl-c" at any time to exit.
+This script will generate synthetic rain. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
 *Note: No Audio files are used, all the sounds are synthetic and random.
 <br><br>
-Compile with: "gcc -O3 babbling.c -o brook -lasound -lm"
+Compile with: "gcc -O3 rain.c -o rain -lasound -lm"
 <br><br>
 Thank you!
