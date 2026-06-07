@@ -53,7 +53,7 @@ void trigger_droplet() {
             double size_factor = DROPLET_SIZE_MIN / randomized_radius; 
             double micro_drift = (((double)rand() / RAND_MAX) - 0.5) * 40.0;
             // Varied short life cycles keeps the texture fluid rather than robotic
-            droplets[i].duration = rand_double(0.1, 0.1);
+            droplets[i].duration = rand_double(0.06, 0.1);
             
             // Scale baseline per-droplet volume explicitly to prevent 100-wave summation clipping
             droplets[i].amplitude = rand_double(0.3, 0.7) * (1.0 / (double)NUM_DROPLETS);
