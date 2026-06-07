@@ -12,4 +12,8 @@ This script will generate synthetic babbling brook. Use headphones with caution!
 <br><br>
 Compile with: "gcc -O3 bwe.c -o bwe -lasound -lm"
 <br><br>
+sudo apt install pipewire-audio-client-libraries pipewire-alsa
+<br><br>
+sudo apt install libasound2-dev
+<br><br>
 Thank you!
