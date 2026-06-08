@@ -15,7 +15,7 @@
 const double MASTER_VOLUME = 15;
 double BUBBLE_RATE_HZ = 1.0;   
 double DROPLET_SIZE_MIN = 0.00005;  
-double DROPLET_SIZE_MAX = 0.0015;  
+double DROPLET_SIZE_MAX = 0.0025;  
 typedef struct {
     int active;
     double current_phase;
