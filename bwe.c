@@ -9,7 +9,7 @@
 #define PI 3.14159265358979323846
 #define PCM_DEVICE "default"
 #define BUFFER_FRAMES 2048
-#define NUM_DROPLETS 300	// Targeted dense overlap array pool size
+#define NUM_DROPLETS 500	// Targeted dense overlap array pool size
 
 // Global Master Loudness Control (0.0 to 1.0)
 const double MASTER_VOLUME = 15;
@@ -71,11 +71,11 @@ trigger_droplet ()
 
 	  // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
 	  droplets[i].sweep_start =
-	    rand_double (100.0, 600.0) * size_factor + micro_drift;
+	    rand_double (100, 300.0) * size_factor + micro_drift;
 
 	  // Sweep target climbs swiftly away from bass rumble to create clean fluid definition
 	  droplets[i].sweep_end =
-	    droplets[i].sweep_start + rand_double (16000,
+	    droplets[i].sweep_start + rand_double (11000,
 						   32000.0) * size_factor;
 	  droplets[i].sweep_range =
 	    droplets[i].sweep_end - droplets[i].sweep_start;
