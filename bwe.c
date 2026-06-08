@@ -12,10 +12,10 @@
 #define NUM_DROPLETS 300  // Targeted dense overlap array pool size
 
 // Global Master Loudness Control (0.0 to 1.0)
-const double MASTER_VOLUME = 20;
+const double MASTER_VOLUME = 1;
 double BUBBLE_RATE_HZ = 1.0;   
-double DROPLET_SIZE_MIN = 0.001;  
-double DROPLET_SIZE_MAX = 0.08;  
+double DROPLET_SIZE_MIN = 0.0001;  
+double DROPLET_SIZE_MAX = 0.008;  
 typedef struct {
     int active;
     double current_phase;
@@ -59,10 +59,10 @@ void trigger_droplet() {
             droplets[i].amplitude = rand_double(0.3, 0.7) * (1.0 / (double)NUM_DROPLETS);
             
             // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
-            droplets[i].sweep_start = rand_double(5.0, 15.0)  * size_factor + micro_drift;
+            droplets[i].sweep_start = rand_double(50.0, 150.0)  * size_factor + micro_drift;
             
             // Sweep target climbs swiftly away from bass rumble to create clean fluid definition
-            droplets[i].sweep_end = droplets[i].sweep_start + rand_double(900, 1600.0)  * size_factor;
+            droplets[i].sweep_end = droplets[i].sweep_start + rand_double(800, 1600.0)  * size_factor;
             droplets[i].sweep_range = droplets[i].sweep_end - droplets[i].sweep_start;
             
             // Stereo Position assignment (0.0 = Far Left, 1.0 = Far Right)
