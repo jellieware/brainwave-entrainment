@@ -12,10 +12,10 @@
 #define NUM_DROPLETS 300  // Targeted dense overlap array pool size
 
 // Global Master Loudness Control (0.0 to 1.0)
-const double MASTER_VOLUME = 1;
+const double MASTER_VOLUME = 15;
 double BUBBLE_RATE_HZ = 1.0;   
-double DROPLET_SIZE_MIN = 0.0001;  
-double DROPLET_SIZE_MAX = 0.008;  
+double DROPLET_SIZE_MIN = 0.00005;  
+double DROPLET_SIZE_MAX = 0.0015;  
 typedef struct {
     int active;
     double current_phase;
@@ -53,7 +53,7 @@ void trigger_droplet() {
             double size_factor = DROPLET_SIZE_MIN / randomized_radius; 
             double micro_drift = (((double)rand() / RAND_MAX) - 0.5) * 40.0;
             // Varied short life cycles keeps the texture fluid rather than robotic
-            droplets[i].duration = rand_double(0.06, 0.1);
+            droplets[i].duration = rand_double(0.06, 0.18);
             
             // Scale baseline per-droplet volume explicitly to prevent 100-wave summation clipping
             droplets[i].amplitude = rand_double(0.3, 0.7) * (1.0 / (double)NUM_DROPLETS);
@@ -62,7 +62,7 @@ void trigger_droplet() {
             droplets[i].sweep_start = rand_double(50.0, 150.0)  * size_factor + micro_drift;
             
             // Sweep target climbs swiftly away from bass rumble to create clean fluid definition
-            droplets[i].sweep_end = droplets[i].sweep_start + rand_double(800, 1600.0)  * size_factor;
+            droplets[i].sweep_end = droplets[i].sweep_start + rand_double(600, 1800.0)  * size_factor;
             droplets[i].sweep_range = droplets[i].sweep_end - droplets[i].sweep_start;
             
             // Stereo Position assignment (0.0 = Far Left, 1.0 = Far Right)
