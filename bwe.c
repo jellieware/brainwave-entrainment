@@ -71,12 +71,12 @@ trigger_droplet ()
 
 	  // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
 	  droplets[i].sweep_start =
-	    rand_double (100, 300.0) * size_factor + micro_drift;
+	    rand_double (280, 320.0) * size_factor + micro_drift;
 
 	  // Sweep target climbs swiftly away from bass rumble to create clean fluid definition
 	  droplets[i].sweep_end =
-	    droplets[i].sweep_start + rand_double (11000,
-						   32000.0) * size_factor;
+	    droplets[i].sweep_start + rand_double (2000,
+						   16500.0) * size_factor;
 	  droplets[i].sweep_range =
 	    droplets[i].sweep_end - droplets[i].sweep_start;
 
