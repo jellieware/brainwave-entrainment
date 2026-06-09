@@ -206,8 +206,8 @@ int main() {
 
           // Route mono drop signal into wide stereo bus using assigned pan
           // coordinates
-          mixed_left += sample_mono * droplets[i].pan_left;
-          mixed_right += sample_mono * droplets[i].pan_right;
+          mixed_left += sample_mono * droplets[i].pan_left * MASTER_VOLUME;
+          mixed_right += sample_mono * droplets[i].pan_right * MASTER_VOLUME;
 
           droplets[i].age += dt;
         }
