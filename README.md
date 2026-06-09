@@ -4,7 +4,8 @@
 <br><br>
 Audio Preview:
 <br><br>
-[babbling_brook_preview.wav](https://github.com/user-attachments/files/28677719/babbling_brook_preview.wav)
+[Babbling_Brook_Preview_final.wav](https://github.com/user-attachments/files/28738292/Babbling_Brook_Preview_final.wav)
+
 <br><br>
 This script will generate synthetic babbling brook. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
