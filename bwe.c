@@ -4,6 +4,35 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+// Gain & Headroom Weights (Boosts volume without clipping)
+// Gain & Headroom Weights (Boosts volume without clipping)
+// Gain & Mix Control (Boosts volume without clipping)
+#define PI 3.14159265358979323846
+#define GRID_SIZE 64
+#define MAX_POLYPHONY 4  
+#define SLOW_LFO_SPEED 0.0012f
+
+// Gain & Headroom Weights
+const float MASTER_VOLUME_GAIN = 4.0f;   
+const float BASTON_WEIGHT      = 0.60f;  
+const float SCHOLASTIC_WEIGHT  = 0.40f;  
+
+// Polyphonic Droplet Voice Matrix
+typedef struct {
+    float age;           
+    float duration;      
+    float base_freq;     
+    float amp_envelope;  
+    int active;          
+} DropletVoice;
+
+static DropletVoice drops_L[MAX_POLYPHONY];
+static DropletVoice drops_R[MAX_POLYPHONY];
+
+// Explicit Global Canvas Track Variables (Clears your undeclared variable error)
+static uint32_t noise_state        = 123456789;
+static double total_elapsed_time    = 0.0;
+static float current_grid_density   = 0.0001f; 
 
 #define SAMPLE_RATE 44100
 #define PI 3.14159265358979323846
@@ -254,8 +283,125 @@ int main() {
       // Index
       // buffer[f * 2 + 1] = (int16_t) (sat_right * 32767.0);	// Right Channel
       // Index
-      buffer[f * 2] = (int16_t)((out_l + (sat_left)) * 32767.0);
-      buffer[f * 2 + 1] = (int16_t)((out_r + (sat_right)) * 32767.0);
+ // 1. Advance our master timeline clock single-sample by single-sample
+
+
+
+// 1. Progress the master timeline clock sample-by-sample
+total_elapsed_time += (1.0 / 44100.0);
+
+// Dillon Baston 64-Grid Coordinate Vector Mechanics
+float grid_x = 0.5f + 0.25f * sin(total_elapsed_time * 0.12);
+float grid_y = 0.5f + 0.25f * cos(total_elapsed_time * 0.08);
+
+int cell_x = (int)(grid_x * (GRID_SIZE - 1));
+int cell_y = (int)(grid_y * (GRID_SIZE - 1));
+
+// Secondary 10-Minute Ultra-Slow Environmental Drift
+float slow_env_drift = sinf(total_elapsed_time * SLOW_LFO_SPEED);
+
+float dynamic_base_pitch   = 45.0f + ((float)cell_y / (float)GRID_SIZE) * 70.0f;
+float final_base_frequency = dynamic_base_pitch + (slow_env_drift * 15.0f); 
+float long_term_duration_mod = 1.0f + (slow_env_drift * 0.35f); 
+
+// ASSIGN MODIFIER: Sets the global variable to manage large, heavy bubble spawning
+current_grid_density = 0.00008f + ((float)cell_x / (float)GRID_SIZE) * 0.00018f;
+
+
+
+
+
+
+
+
+
+
+
+// ============================================================================
+// POLYPHONIC MATRIX SOUND GENERATION ENGINE
+// ============================================================================
+// Fast Pseudo-Random Generator (Xorshift)
+noise_state ^= (noise_state << 13); 
+noise_state ^= (noise_state >> 17); 
+noise_state ^= (noise_state << 5);
+float random_roll_L = (float)(noise_state & 0xFFFF) / 65535.0f;
+float random_roll_R = (float)((noise_state >> 16) & 0xFFFF) / 65535.0f;
+
+// Asynchronously schedule new bubbles into empty voice slots using the grid density
+if (random_roll_L < current_grid_density) { 
+    for (int v = 0; v < MAX_POLYPHONY; v++) {
+        if (!drops_L[v].active) {
+            drops_L[v].active       = 1;
+            drops_L[v].age          = 0.0f;
+            drops_L[v].duration     = 3000.0f + (random_roll_L * 4000.0f);
+            drops_L[v].base_freq    = current_grid_density + (random_roll_L * 100.0f);
+            drops_L[v].amp_envelope = 0.1f + (random_roll_L * 0.4f);
+            break;
+        }
+    }
+}
+if (random_roll_R < current_grid_density) { 
+    for (int v = 0; v < MAX_POLYPHONY; v++) {
+        if (!drops_R[v].active) {
+            drops_R[v].active       = 1;
+            drops_R[v].age          = 0.0f;
+            drops_R[v].duration     = 3000.0f + (random_roll_R * 4000.0f);
+            drops_R[v].base_freq    = current_grid_density + (random_roll_R * 100.0f);
+            drops_R[v].amp_envelope = 0.1f + (random_roll_R * 0.4f);
+            break;
+        }
+    }
+}
+
+// Sum overlapping polyphonic voices smoothly
+float scholastic_water_L = 0.0f;
+float scholastic_water_R = 0.0f;
+
+for (int v = 0; v < MAX_POLYPHONY; v++) {
+    if (drops_L[v].active) {
+        drops_L[v].age += 1.0f;
+        float progress = drops_L[v].age / drops_L[v].duration;
+        
+        float window = sinf(3.14159265f * progress) * (1.0f - progress);
+        float local_amp = drops_L[v].amp_envelope * window;
+        
+        float dynamic_freq = drops_L[v].base_freq * (1.0f + (progress * progress * 0.4f));
+        scholastic_water_L += sinf(drops_L[v].age * (2.0f * 3.14159265f * dynamic_freq / 44100.0f)) * local_amp;
+        
+        if (drops_L[v].age >= drops_L[v].duration) drops_L[v].active = 0;
+    }
+    
+    if (drops_R[v].active) {
+        drops_R[v].age += 1.0f;
+        float progress = drops_R[v].age / drops_R[v].duration;
+        
+        float window = sinf(3.14159265f * progress) * (1.0f - progress);
+        float local_amp = drops_R[v].amp_envelope * window;
+        
+        float dynamic_freq = drops_R[v].base_freq * (1.0f + (progress * progress * 1.6f));
+        scholastic_water_R += sinf(drops_R[v].age * (2.0f * 3.14159265f * dynamic_freq / 44100.0f)) * local_amp;
+        
+        if (drops_R[v].age >= drops_R[v].duration) drops_R[v].active = 0;
+    }
+}
+
+// 3. Mix channels together inside a safe 32-bit workspace with Master Gain applied
+int32_t amplified_L = (int32_t)(((sin(out_l) * BASTON_WEIGHT) + (scholastic_water_L * SCHOLASTIC_WEIGHT)) * 32767.0f * MASTER_VOLUME_GAIN);
+int32_t amplified_R = (int32_t)(((sin(out_r) * BASTON_WEIGHT) + (scholastic_water_R * SCHOLASTIC_WEIGHT)) * 32767.0f * MASTER_VOLUME_GAIN);
+
+// 4. Strict boundary ceiling clamp checks (Stops digital static completely)
+if (amplified_L > 32767)  amplified_L = 32767;
+if (amplified_L < -32768) amplified_L = -32768;
+if (amplified_R > 32767)  amplified_R = 32767;
+if (amplified_R < -32768) amplified_R = -32768;
+
+// 5. Output clean raw interleaved binary streams to standard out
+int16_t out_sample;
+
+
+      
+      buffer[f * 2] = (int16_t)(((amplified_L)));
+      buffer[f * 2 + 1] = (int16_t)(((amplified_R)));
     }
 
     snd_pcm_sframes_t written =
