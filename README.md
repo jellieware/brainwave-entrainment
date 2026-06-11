@@ -11,7 +11,7 @@ Audio Preview:
 <br><br>
 This script will generate synthetic babbling brook. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
-This program is based on "Minnaert's formula"
+This program is based on "Minnaert's formula" and "Dillon Baston's" algorithm
 <br><br>
 *Note: No Audio files are used, all the sounds are synthetic and random.
 <br><br>
