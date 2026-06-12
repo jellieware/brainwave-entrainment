@@ -4,6 +4,16 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+float macro_flow_surge = 1.0f;
+
+// Binaural Beat Carrier Configurations
+// Left ear plays a solid base tone; Right ear plays the shifted target tone.
+// 102.5 Hz minus 100.0 Hz creates a 2.5 Hz Delta Beat illusion in the brain.
+double carrier_phase_left = 0.0;
+double carrier_phase_right = 0.0;
+double carrier_freq_left = 40.0;  // Base carrier pitch in Left Ear
+double carrier_freq_right = 42.5; // Delta shifted pitch in Right Ear
+double binaural_volume = 0.05;    // Mix level (0.05 = 5%). Keep it low to blend
 // Gain & Headroom Weights (Boosts volume without clipping)
 // Gain & Headroom Weights (Boosts volume without clipping)
 // Gain & Mix Control (Boosts volume without clipping)
@@ -51,7 +61,7 @@ const float dry_mix = 0.65f; // Volume of original untouched audio
 const float wet_mix = 0.45f; // Volume of
 
 // Global Master Loudness Control (0.0 to 1.0)
-const double MASTER_VOLUME = 40;
+const double MASTER_VOLUME = 80;
 double BUBBLE_RATE_HZ = 1.0;
 double DROPLET_SIZE_MIN = 0.00005;
 double DROPLET_SIZE_MAX = 0.0025;
@@ -174,8 +184,24 @@ int main() {
       //     trigger_droplet ();
       // }
 
-      double mixed_left = 0.0;
-      double mixed_right = 0.0;
+      double carrier_left = sin(carrier_phase_left) * binaural_volume;
+      double carrier_right = sin(carrier_phase_right) * binaural_volume;
+
+      // Advance carrier phases for the binaural beat
+      carrier_phase_left += (2.0 * M_PI * carrier_freq_left) / SAMPLE_RATE;
+      carrier_phase_right += (2.0 * M_PI * carrier_freq_right) / SAMPLE_RATE;
+      if (carrier_phase_left > 2.0 * M_PI)
+        carrier_phase_left -= 2.0 * M_PI;
+      if (carrier_phase_right > 2.0 * M_PI)
+        carrier_phase_right -= 2.0 * M_PI;
+
+      // Mix the binaural oscillators independently into your existing sound
+      // Replace your old single mixed output with these two split channels:
+      double mixed_left = carrier_left;
+      double mixed_right = carrier_right;
+
+      //   double mixed_left = 0.0;
+      //  double mixed_right = 0.0;
 
       for (int i = 0; i < NUM_DROPLETS; i++) {
         if (droplets[i].active) {
@@ -297,12 +323,16 @@ int main() {
       int cell_y = (int)(grid_y * (GRID_SIZE - 1));
 
       // Secondary 10-Minute Ultra-Slow Environmental Drift
-      float slow_env_drift = sinf(total_elapsed_time * SLOW_LFO_SPEED);
 
+      // float dynamic_master_gain = MASTER_VOLUME_GAIN * macro_flow_surge;
+
+      float slow_env_drift = sinf(total_elapsed_time * SLOW_LFO_SPEED);
+      macro_flow_surge = 0.825f + (slow_env_drift * 0.175f);
       float dynamic_base_pitch =
           45.0f + ((float)cell_y / (float)GRID_SIZE) * 70.0f;
-      float final_base_frequency =
-          dynamic_base_pitch + (slow_env_drift * 15.0f);
+      float final_base_frequency = dynamic_base_pitch +
+                                   (slow_env_drift * 15.0f) +
+                                   MASTER_VOLUME * macro_flow_surge;
       float long_term_duration_mod = 1.0f + (slow_env_drift * 0.35f);
 
       // ASSIGN MODIFIER: Sets the global variable to manage large, heavy bubble
@@ -414,10 +444,16 @@ int main() {
         amplified_R = -32768;
 
       // 5. Output clean raw interleaved binary streams to standard out
-      int16_t out_sample;
+      //  int16_t out_sample;
+      float constant_background_roar =
+          (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
 
-      buffer[f * 2] = (int16_t)(((amplified_L)));
-      buffer[f * 2 + 1] = (int16_t)(((amplified_R)));
+      // Apply a rough bandpass filter to mask the noise or damp it heavily
+      constant_background_roar *=
+          0.03f; // Keep it low (3% volume) to act as a glue layer
+
+      buffer[f * 2] = (int16_t)(((amplified_L + constant_background_roar)));
+      buffer[f * 2 + 1] = (int16_t)(((amplified_R + constant_background_roar)));
     }
 
     snd_pcm_sframes_t written =
