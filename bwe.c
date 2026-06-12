@@ -5,7 +5,25 @@
 #include <stdlib.h>
 #include <time.h>
 float macro_flow_surge = 1.0f;
+#define AUDIO_P_COUNT 256
+int sample_counter = 0;
+float cached_hydro_sample = 0.0f;
+typedef struct {
+  float pos; // Physical 1D coordinate displacement line
+  float vel; // Acoustic particle velocity
+  float prs; // Acoustic pressure deviation (Pascals)
+} HydroAudioNode;
 
+HydroAudioNode h_nodes[AUDIO_P_COUNT];
+float h_time = 0.0f;
+
+void init_hydro_audio() {
+  for (int i = 0; i < AUDIO_P_COUNT; i++) {
+    h_nodes[i].pos =
+        (float)i * 0.002f; // Tightly packed physical spacing (2mm intervals)
+    h_nodes[i].vel = h_nodes[i].prs = 0.0f;
+  }
+}
 // Binaural Beat Carrier Configurations
 // Left ear plays a solid base tone; Right ear plays the shifted target tone.
 // 102.5 Hz minus 100.0 Hz creates a 2.5 Hz Delta Beat illusion in the brain.
@@ -135,7 +153,51 @@ float lpf_state_r = 0.0f;
 // Closer to 0.0 = Lower cutoff frequency (muffled/deeper)
 // Closer to 1.0 = Higher cutoff frequency (sharper/brighter)
 const float LPF_ALPHA = 0.100f;
+float step_sph_hydro_sample(float carrier_freq) {
+  const float DT =
+      1.0f / 44100.0f; // Exact time step for 44.1kHz audio sampling rate
+  h_time += DT;
 
+  // Node 0 acts as your underwater transducer sonar/hydrophone projection
+  // source
+  h_nodes[0].prs = 0.8f * sinf(2.0f * 3.1415926f * carrier_freq * h_time);
+
+  // 1. Density continuity calculation translated to underwater acoustic
+  // pressure
+  for (int i = 1; i < AUDIO_P_COUNT; i++) {
+    float local_accumulation = 0.0f;
+    for (int j = 0; j < AUDIO_P_COUNT; j++) {
+      float dist = fabsf(h_nodes[j].pos - h_nodes[i].pos);
+      if (dist < 0.01f) { // 1cm smoothing kernel radius
+        local_accumulation += (1.0f - (dist / 0.01f));
+      }
+    }
+    // Hydroacoustic calculation: p = c^2 * delta_rho (Water speed constant
+    // ~1500m/s scaled)
+    h_nodes[i].prs = 22500.0f * (local_accumulation - 1.0f);
+  }
+
+  // 2. Momentum transformation (Pressure gradient accelerating the acoustic
+  // fluid)
+  for (int i = 1; i < AUDIO_P_COUNT; i++) {
+    float force_gradient = 0.0f;
+    for (int j = 0; j < AUDIO_P_COUNT; j++) {
+      if (i == j)
+        continue;
+      float dist = fabsf(h_nodes[j].pos - h_nodes[i].pos);
+      if (dist < 0.01f && dist > 0.0001f) {
+        // Directional push based on neighbor pressure differences
+        float sign = (h_nodes[j].pos > h_nodes[i].pos) ? 1.0f : -1.0f;
+        force_gradient += -0.5f * (h_nodes[i].prs + h_nodes[j].prs) * sign;
+      }
+    }
+    h_nodes[i].vel += DT * force_gradient;
+    h_nodes[i].pos += DT * h_nodes[i].vel;
+  }
+
+  // Return the pressure wave sample captured at the far end node of the array
+  return h_nodes[AUDIO_P_COUNT - 1].prs;
+}
 int main() {
   srand((unsigned int)time(NULL));
 
@@ -491,8 +553,27 @@ int main() {
       constant_background_roar *=
           0.03f; // Keep it low (3% volume) to act as a glue layer
 
-      buffer[f * 2] = (int16_t)(((amplified_L + constant_background_roar)));
-      buffer[f * 2 + 1] = (int16_t)(((amplified_R + constant_background_roar)));
+      if (sample_counter++ >= 64) {
+        cached_hydro_sample = step_sph_hydro_sample(150.0f); // Run SPH step
+        sample_counter = 0;                                  // Reset counter
+      }
+
+      float hydro_sample = cached_hydro_sample;
+
+      // Hard limiter to safely prevent digital clipping distortion
+      if (hydro_sample > 1.0f)
+        hydro_sample = 1.0f;
+      if (hydro_sample < -1.0f)
+        hydro_sample = -1.0f;
+
+      // 3. Write directly to your project's active output array type
+      // If your code uses 16-bit integer streams (AUDIO_S16):
+      //    audio_output_buffer[i] = (int16_t)(hydro_sample * 32767.0f);
+
+      buffer[f * 2] =
+          (int16_t)(((amplified_L + constant_background_roar + hydro_sample)));
+      buffer[f * 2 + 1] =
+          (int16_t)(((amplified_R + constant_background_roar + hydro_sample)));
     }
 
     snd_pcm_sframes_t written =
