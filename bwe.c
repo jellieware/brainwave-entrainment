@@ -111,7 +111,7 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(50, 150.0) * size_factor + micro_drift;
+          rand_double(50, 500.0) * size_factor + micro_drift;
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
@@ -127,6 +127,14 @@ void trigger_droplet() {
     }
   }
 }
+// Low-Pass Filter State (one for each stereo channel)
+float lpf_state_l = 0.0f;
+float lpf_state_r = 0.0f;
+
+// Smoothing factor alpha (Value between 0.0 and 1.0)
+// Closer to 0.0 = Lower cutoff frequency (muffled/deeper)
+// Closer to 1.0 = Higher cutoff frequency (sharper/brighter)
+const float LPF_ALPHA = 0.15f;
 
 int main() {
   srand((unsigned int)time(NULL));
@@ -238,23 +246,41 @@ int main() {
           double envelope =
               droplets[i].amplitude * exp(-5.0 * progress) * sin(PI * progress);
 
-          // Generate sine wave sample
+          // 2. Hollow watery envelope
+          // double envelope = droplets[i].amplitude * sin(progress * PI) * (1.0
+          // - progress);
           double sample_mono = envelope * sin(droplets[i].current_phase);
 
-          // Update phase based on the accelerating frequency
-          droplets[i].current_phase += (2.0 * PI * current_freq) / SAMPLE_RATE;
-          if (droplets[i].current_phase > 2.0 * PI) {
-            droplets[i].current_phase -= 2.0 * PI;
-          }
+          // 3. Pressure wobble phase update
+          double bubble_wobble =
+              1.0 + 0.08 * sin(2.0 * PI * 80.0 * droplets[i].age);
+          droplets[i].current_phase +=
+              (2.0 * PI * current_freq * bubble_wobble) * dt;
 
-          // Track strict phase continuity to ensure smooth transitions
-          //  droplets[ i]. current_phase += (2.0 * PI * current_freq) /
-          //  SAMPLE_RATE;
-          droplets[i].current_phase += 2.0 * PI * current_freq * dt;
           if (droplets[i].current_phase > 2.0 * PI) {
             droplets[i].current_phase =
                 fmod(droplets[i].current_phase, 2.0 * PI);
           }
+
+          // Generate sine wave sample
+          //    double sample_mono = envelope * sin(droplets[i].current_phase);
+          /*
+                    // Update phase based on the accelerating frequency
+                    droplets[i].current_phase += (2.0 * PI * current_freq) /
+             SAMPLE_RATE; if (droplets[i].current_phase > 2.0 * PI) {
+                      droplets[i].current_phase -= 2.0 * PI;
+                    }
+
+                    // Track strict phase continuity to ensure smooth
+             transitions
+                    //  droplets[ i]. current_phase += (2.0 * PI * current_freq)
+             /
+                    //  SAMPLE_RATE;
+                    droplets[i].current_phase += 2.0 * PI * current_freq * dt;
+                    if (droplets[i].current_phase > 2.0 * PI) {
+                      droplets[i].current_phase =
+                          fmod(droplets[i].current_phase, 2.0 * PI);
+                    } */
 
           // Compute single mono raw sample contribution
           //    double sample_mono = sin(droplets[i].current_phase) * envelope *
@@ -443,10 +469,23 @@ int main() {
       if (amplified_R < -32768)
         amplified_R = -32768;
 
-      // 5. Output clean raw interleaved binary streams to standard out
-      //  int16_t out_sample;
+      lpf_state_l =
+          lpf_state_l + LPF_ALPHA * ((float)amplified_L - lpf_state_l);
+      lpf_state_r =
+          lpf_state_r + LPF_ALPHA * ((float)amplified_R - lpf_state_r);
+
+      // Convert back to integers
+      amplified_L = (int32_t)lpf_state_l;
+      amplified_R = (int32_t)lpf_state_r;
+      // ==========================================
+
       float constant_background_roar =
           (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
+
+      // 5. Output clean raw interleaved binary streams to standard out
+      //  int16_t out_sample;
+      //    float constant_background_roar =
+      //     (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
 
       // Apply a rough bandpass filter to mask the noise or damp it heavily
       constant_background_roar *=
