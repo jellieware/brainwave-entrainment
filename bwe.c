@@ -111,7 +111,7 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(50, 500.0) * size_factor + micro_drift;
+          rand_double(50, 600.0) * size_factor + micro_drift;
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
@@ -134,7 +134,7 @@ float lpf_state_r = 0.0f;
 // Smoothing factor alpha (Value between 0.0 and 1.0)
 // Closer to 0.0 = Lower cutoff frequency (muffled/deeper)
 // Closer to 1.0 = Higher cutoff frequency (sharper/brighter)
-const float LPF_ALPHA = 0.15f;
+const float LPF_ALPHA = 0.100f;
 
 int main() {
   srand((unsigned int)time(NULL));
