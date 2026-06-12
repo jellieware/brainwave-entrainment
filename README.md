@@ -9,7 +9,7 @@ Audio Preview:
 
 
 <br><br>
-This script will generate synthetic babbling brook with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
+This program will generate synthetic babbling brook with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
 This program is based on "Minnaert's formula" and "Dillon Baston's" algorithm
 <br><br>
