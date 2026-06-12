@@ -4,6 +4,27 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+// --- HIGH-PASS FILTER VARIABLES (REMOVES BASS RUMBLE) ---
+float hp_prev_in_l = 0.0f;
+float hp_prev_out_l = 0.0f;
+float hp_prev_in_r = 0.0f;
+float hp_prev_out_r = 0.0f;
+
+// The filter coefficient:
+// 0.985f sets a tight low-cut roughly around 120Hz-150Hz.
+// This completely carves out the deep sub-bass mud without losing clarity.
+float hp_alpha = 0.982f;
+// --------------------------------------------------------
+
+// --- FLUID LIQUID INTEGRATORS (DIRECT AUDIO DAMPENING) ---
+float fluid_history_l = 0.0f;
+float fluid_history_r = 0.0f;
+
+// Lower values make the water smoother and more fluid.
+// Higher values let more of the individual bubble details through.
+float fluid_smudge_factor = 0.25f;
+// ---------------------------------------------------------
+
 float macro_flow_surge = 1.0f;
 #define AUDIO_P_COUNT 256
 int sample_counter = 0;
@@ -569,6 +590,42 @@ int main() {
       // 3. Write directly to your project's active output array type
       // If your code uses 16-bit integer streams (AUDIO_S16):
       //    audio_output_buffer[i] = (int16_t)(hydro_sample * 32767.0f);
+
+      // --- INSERT THIS DIRECT BLOCK TO LIQUIDIZE THE SOUND ---
+
+      // 1. Blend the current bubble sample into the historical audio track
+      // This drags the individual sharp peaks horizontally, fusing them
+      // together
+      fluid_history_l = fluid_history_l +
+                        fluid_smudge_factor * (amplified_L - fluid_history_l);
+      fluid_history_r = fluid_history_r +
+                        fluid_smudge_factor * (amplified_R - fluid_history_r);
+
+      // 2. Assign the smoothly integrated liquid output back to your channels
+      // We apply a small boost (1.8f) to perfectly restore any perceived volume
+      // loss
+      amplified_L = fluid_history_l * 1.8f;
+      amplified_R = fluid_history_r * 1.8f;
+
+      // -------------------------------------------------------
+
+      // --- INSERT THIS HIGH-PASS BLOCK TO ELIMINATE THE BASS RUMBLE ---
+
+      // 1. Left Channel High-Pass Filter Math
+      float current_hp_l =
+          hp_alpha * (hp_prev_out_l + amplified_L - hp_prev_in_l);
+      hp_prev_in_l = amplified_L;
+      hp_prev_out_l = current_hp_l;
+      amplified_L = current_hp_l;
+
+      // 2. Right Channel High-Pass Filter Math
+      float current_hp_r =
+          hp_alpha * (hp_prev_out_r + amplified_R - hp_prev_in_r);
+      hp_prev_in_r = amplified_R;
+      hp_prev_out_r = current_hp_r;
+      amplified_R = current_hp_r;
+
+      // -----------------------------------------------------------------
 
       buffer[f * 2] =
           (int16_t)(((amplified_L + constant_background_roar + hydro_sample)));
