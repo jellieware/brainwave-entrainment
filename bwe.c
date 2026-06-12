@@ -61,7 +61,7 @@ const float dry_mix = 0.65f; // Volume of original untouched audio
 const float wet_mix = 0.45f; // Volume of
 
 // Global Master Loudness Control (0.0 to 1.0)
-const double MASTER_VOLUME = 80;
+const double MASTER_VOLUME = 20;
 double BUBBLE_RATE_HZ = 1.0;
 double DROPLET_SIZE_MIN = 0.00005;
 double DROPLET_SIZE_MAX = 0.0025;
