@@ -22,10 +22,10 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.25f;
+float fluid_smudge_factor = 0.025f;
 // ---------------------------------------------------------
-
-float macro_flow_surge = 1.0f;
+float out_l;
+float out_r;
 #define AUDIO_P_COUNT 256
 int sample_counter = 0;
 float cached_hydro_sample = 0.0f;
@@ -82,7 +82,10 @@ static DropletVoice drops_R[MAX_POLYPHONY];
 // error)
 static uint32_t noise_state = 123456789;
 static double total_elapsed_time = 0.0;
-static float current_grid_density = 0.0001f;
+float current_grid_density = 0.0001f;
+float final_base_frequency = 150.0f;
+float long_term_duration_mod = 1.0f;
+float macro_flow_surge = 1.0f;
 
 #define SAMPLE_RATE 44100
 #define PI 3.14159265358979323846
@@ -154,10 +157,11 @@ void trigger_droplet() {
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
-      droplets[i].sweep_end =
-          droplets[i].sweep_start + rand_double(2000, 16500.0) * size_factor;
-      droplets[i].sweep_range = droplets[i].sweep_end - droplets[i].sweep_start;
-
+      /*  droplets[i].sweep_end =
+            droplets[i].sweep_start + rand_double(2000, 16500.0) * size_factor;
+        droplets[i].sweep_range = droplets[i].sweep_end -
+        droplets[i].sweep_start;
+  */
       // Stereo Position assignment (0.0 = Far Left, 1.0 = Far Right)
       double pan = rand_double(0.0, 1.0);
       droplets[i].pan_left = sqrt(1.0 - pan); // Equal-power panning curve
@@ -274,154 +278,6 @@ int main() {
       //  {
       //     trigger_droplet ();
       // }
-
-      double carrier_left = sin(carrier_phase_left) * binaural_volume;
-      double carrier_right = sin(carrier_phase_right) * binaural_volume;
-
-      // Advance carrier phases for the binaural beat
-      carrier_phase_left += (2.0 * M_PI * carrier_freq_left) / SAMPLE_RATE;
-      carrier_phase_right += (2.0 * M_PI * carrier_freq_right) / SAMPLE_RATE;
-      if (carrier_phase_left > 2.0 * M_PI)
-        carrier_phase_left -= 2.0 * M_PI;
-      if (carrier_phase_right > 2.0 * M_PI)
-        carrier_phase_right -= 2.0 * M_PI;
-
-      // Mix the binaural oscillators independently into your existing sound
-      // Replace your old single mixed output with these two split channels:
-      double mixed_left = carrier_left;
-      double mixed_right = carrier_right;
-
-      //   double mixed_left = 0.0;
-      //  double mixed_right = 0.0;
-
-      for (int i = 0; i < NUM_DROPLETS; i++) {
-        if (droplets[i].active) {
-          if (droplets[i].age >= droplets[i].duration) {
-            droplets[i].active = 0;
-            continue;
-          }
-
-          //    double progress = droplets[i].age / droplets[i].duration;
-
-          // Smooth window curve clears out edge clicks and abrupt pops
-          //     double envelope = sin(progress * PI);
-
-          // Pure linear calculation prevents sub-bass lingering distortion
-          //      double current_freq = droplets[i].sweep_start +
-          //      (droplets[i].sweep_range * progress);
-
-          double sweep_end = droplets[i].sweep_start * rand_double(3.0, 6.0);
-          droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
-          double progress = droplets[i].age / droplets[i].duration;
-
-          if (progress >= 1.0) {
-            droplets[i].active = 0;
-            continue;
-          }
-
-          // 1. EXPONENTIAL FREQUENCY SWEEP
-          // Pitch accelerates upward drastically near the end
-          double current_freq =
-              droplets[i].sweep_start * pow(droplets[i].sweep_factor, progress);
-
-          // 2. EXPONENTIAL VOLUME DECAY ENVELOPE
-          // Sharp initial burst with a smooth, natural ringing tail
-          double envelope =
-              droplets[i].amplitude * exp(-5.0 * progress) * sin(PI * progress);
-
-          // 2. Hollow watery envelope
-          // double envelope = droplets[i].amplitude * sin(progress * PI) * (1.0
-          // - progress);
-          double sample_mono = envelope * sin(droplets[i].current_phase);
-
-          // 3. Pressure wobble phase update
-          double bubble_wobble =
-              1.0 + 0.08 * sin(2.0 * PI * 80.0 * droplets[i].age);
-          droplets[i].current_phase +=
-              (2.0 * PI * current_freq * bubble_wobble) * dt;
-
-          if (droplets[i].current_phase > 2.0 * PI) {
-            droplets[i].current_phase =
-                fmod(droplets[i].current_phase, 2.0 * PI);
-          }
-
-          // Generate sine wave sample
-          //    double sample_mono = envelope * sin(droplets[i].current_phase);
-          /*
-                    // Update phase based on the accelerating frequency
-                    droplets[i].current_phase += (2.0 * PI * current_freq) /
-             SAMPLE_RATE; if (droplets[i].current_phase > 2.0 * PI) {
-                      droplets[i].current_phase -= 2.0 * PI;
-                    }
-
-                    // Track strict phase continuity to ensure smooth
-             transitions
-                    //  droplets[ i]. current_phase += (2.0 * PI * current_freq)
-             /
-                    //  SAMPLE_RATE;
-                    droplets[i].current_phase += 2.0 * PI * current_freq * dt;
-                    if (droplets[i].current_phase > 2.0 * PI) {
-                      droplets[i].current_phase =
-                          fmod(droplets[i].current_phase, 2.0 * PI);
-                    } */
-
-          // Compute single mono raw sample contribution
-          //    double sample_mono = sin(droplets[i].current_phase) * envelope *
-          //    droplets[i].amplitude;
-
-          // Route mono drop signal into wide stereo bus using assigned pan
-          // coordinates
-          mixed_left += sample_mono * droplets[i].pan_left * MASTER_VOLUME;
-          mixed_right += sample_mono * droplets[i].pan_right * MASTER_VOLUME;
-
-          droplets[i].age += dt;
-        }
-      }
-
-      // Apply soft-saturation clipping protection along both distinct channels
-      double sat_left = tanh(mixed_left) * MASTER_VOLUME * 0.03;
-      double sat_right = tanh(mixed_right) * MASTER_VOLUME * 0.03;
-
-      // 2. Pull older echo reflections out of memory arrays
-      float history_l = reverb_buffer_l[reverb_idx];
-      float history_r = reverb_buffer_r[reverb_idx];
-
-      // 3. Store current audio back into the echo feedback loops
-      reverb_buffer_l[reverb_idx] = mixed_left + (history_l * feedback);
-      reverb_buffer_r[reverb_idx] = mixed_right + (history_r * feedback);
-
-      // 4. Mix the dry audio stream with wet space reflections
-      float out_l = (mixed_left * dry_mix) + (history_l * wet_mix);
-      float out_r = (mixed_right * dry_mix) + (history_r * wet_mix);
-
-      // 5. Advance the circular index counter forward
-      reverb_idx = (reverb_idx + 1) % REVERB_DELAY_SAMPLES;
-
-      // 6. Native hard clipping protection limiters
-      if (out_l > 1.0f)
-        out_l = 1.0f;
-      if (out_l < -1.0f)
-        out_l = -1.0f;
-      if (out_r > 1.0f)
-        out_r = 1.0f;
-      if (out_r < -1.0f)
-        out_r = -1.0f;
-
-      // 7. Overwrite original array positions with reverberated sound
-
-      // 2. Soft-clip the signals using a hyperbolic tangent function (tanh)
-      // This naturally compresses the audio smoothly like a professional
-      // limiter
-
-      // Convert floating point coordinates to native PCM 16-bit sound card
-      // boundaries
-      // buffer[f * 2] = (int16_t) (sat_left * 32767.0);	// Left Channel
-      // Index
-      // buffer[f * 2 + 1] = (int16_t) (sat_right * 32767.0);	// Right Channel
-      // Index
-      // 1. Advance our master timeline clock single-sample by single-sample
-
-      // 1. Progress the master timeline clock sample-by-sample
       total_elapsed_time += (1.0 / 44100.0);
 
       // Dillon Baston 64-Grid Coordinate Vector Mechanics
@@ -551,6 +407,155 @@ int main() {
         amplified_R = 32767;
       if (amplified_R < -32768)
         amplified_R = -32768;
+
+      //
+      double carrier_left = sin(carrier_phase_left) * binaural_volume;
+      double carrier_right = sin(carrier_phase_right) * binaural_volume;
+
+      // Advance carrier phases for the binaural beat
+      carrier_phase_left += (2.0 * M_PI * carrier_freq_left) / SAMPLE_RATE;
+      carrier_phase_right += (2.0 * M_PI * carrier_freq_right) / SAMPLE_RATE;
+      if (carrier_phase_left > 2.0 * M_PI)
+        carrier_phase_left -= 2.0 * M_PI;
+      if (carrier_phase_right > 2.0 * M_PI)
+        carrier_phase_right -= 2.0 * M_PI;
+
+      // Mix the binaural oscillators independently into your existing sound
+      // Replace your old single mixed output with these two split channels:
+      double mixed_left = carrier_left;
+      double mixed_right = carrier_right;
+
+      //   double mixed_left = 0.0;
+      //  double mixed_right = 0.0;
+
+      for (int i = 0; i < NUM_DROPLETS; i++) {
+        if (droplets[i].active) {
+          if (droplets[i].age >= droplets[i].duration) {
+            droplets[i].active = 0;
+            continue;
+          }
+
+          //    double progress = droplets[i].age / droplets[i].duration;
+
+          // Smooth window curve clears out edge clicks and abrupt pops
+          //     double envelope = sin(progress * PI);
+
+          // Pure linear calculation prevents sub-bass lingering distortion
+          //      double current_freq = droplets[i].sweep_start +
+          //      (droplets[i].sweep_range * progress);
+
+          double sweep_end = droplets[i].sweep_start * rand_double(3.0, 6.0);
+          droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
+          double progress = droplets[i].age / droplets[i].duration;
+
+          if (progress >= 1.0) {
+            droplets[i].active = 0;
+            continue;
+          }
+
+          // 1. EXPONENTIAL FREQUENCY SWEEP
+          // Pitch accelerates upward drastically near the end
+          double current_freq =
+              droplets[i].sweep_start * pow(droplets[i].sweep_factor, progress);
+
+          // 2. EXPONENTIAL VOLUME DECAY ENVELOPE
+          // Sharp initial burst with a smooth, natural ringing tail
+          double envelope =
+              droplets[i].amplitude * exp(-5.0 * progress) * sin(PI * progress);
+
+          // 2. Hollow watery envelope
+          // double envelope = droplets[i].amplitude * sin(progress * PI) * (1.0
+          // - progress);
+          double sample_mono = envelope * sin(droplets[i].current_phase);
+
+          // 3. Pressure wobble phase update
+          double bubble_wobble =
+              1.0 + 0.08 * sin(2.0 * PI * 80.0 * droplets[i].age);
+          droplets[i].current_phase +=
+              (2.0 * PI * current_freq * bubble_wobble) * dt;
+
+          if (droplets[i].current_phase > 2.0 * PI) {
+            droplets[i].current_phase =
+                fmod(droplets[i].current_phase, 2.0 * PI);
+          }
+
+          // Generate sine wave sample
+          //    double sample_mono = envelope * sin(droplets[i].current_phase);
+          /*
+                    // Update phase based on the accelerating frequency
+                    droplets[i].current_phase += (2.0 * PI * current_freq) /
+             SAMPLE_RATE; if (droplets[i].current_phase > 2.0 * PI) {
+                      droplets[i].current_phase -= 2.0 * PI;
+                    }
+
+                    // Track strict phase continuity to ensure smooth
+             transitions
+                    //  droplets[ i]. current_phase += (2.0 * PI * current_freq)
+             /
+                    //  SAMPLE_RATE;
+                    droplets[i].current_phase += 2.0 * PI * current_freq * dt;
+                    if (droplets[i].current_phase > 2.0 * PI) {
+                      droplets[i].current_phase =
+                          fmod(droplets[i].current_phase, 2.0 * PI);
+                    } */
+
+          // Compute single mono raw sample contribution
+          //    double sample_mono = sin(droplets[i].current_phase) * envelope *
+          //    droplets[i].amplitude;
+
+          // Route mono drop signal into wide stereo bus using assigned pan
+          // coordinates
+          mixed_left += sample_mono * droplets[i].pan_left * MASTER_VOLUME;
+          mixed_right += sample_mono * droplets[i].pan_right * MASTER_VOLUME;
+
+          droplets[i].age += dt;
+        }
+      }
+
+      // Apply soft-saturation clipping protection along both distinct channels
+      double sat_left = tanh(mixed_left) * MASTER_VOLUME * 0.03;
+      double sat_right = tanh(mixed_right) * MASTER_VOLUME * 0.03;
+
+      // 2. Pull older echo reflections out of memory arrays
+      float history_l = reverb_buffer_l[reverb_idx];
+      float history_r = reverb_buffer_r[reverb_idx];
+
+      // 3. Store current audio back into the echo feedback loops
+      reverb_buffer_l[reverb_idx] = mixed_left + (history_l * feedback);
+      reverb_buffer_r[reverb_idx] = mixed_right + (history_r * feedback);
+
+      // 4. Mix the dry audio stream with wet space reflections
+      out_l = (mixed_left * dry_mix) + (history_l * wet_mix);
+      out_r = (mixed_right * dry_mix) + (history_r * wet_mix);
+
+      // 5. Advance the circular index counter forward
+      reverb_idx = (reverb_idx + 1) % REVERB_DELAY_SAMPLES;
+
+      // 6. Native hard clipping protection limiters
+      if (out_l > 1.0f)
+        out_l = 1.0f;
+      if (out_l < -1.0f)
+        out_l = -1.0f;
+      if (out_r > 1.0f)
+        out_r = 1.0f;
+      if (out_r < -1.0f)
+        out_r = -1.0f;
+
+      // 7. Overwrite original array positions with reverberated sound
+
+      // 2. Soft-clip the signals using a hyperbolic tangent function (tanh)
+      // This naturally compresses the audio smoothly like a professional
+      // limiter
+
+      // Convert floating point coordinates to native PCM 16-bit sound card
+      // boundaries
+      // buffer[f * 2] = (int16_t) (sat_left * 32767.0);	// Left Channel
+      // Index
+      // buffer[f * 2 + 1] = (int16_t) (sat_right * 32767.0);	// Right Channel
+      // Index
+      // 1. Advance our master timeline clock single-sample by single-sample
+
+      // 1. Progress the master timeline clock sample-by-sample
 
       lpf_state_l =
           lpf_state_l + LPF_ALPHA * ((float)amplified_L - lpf_state_l);
