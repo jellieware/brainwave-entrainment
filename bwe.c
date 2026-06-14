@@ -1,4 +1,4 @@
-//author:alex terranova(2026)
+// author:alex terranova(2026)
 
 #include <alsa/asoundlib.h>
 #include <math.h>
@@ -6,6 +6,114 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+
+/**
+ * Safely boosts the volume of an interleaved stereo int16_t ALSA buffer.
+ *
+ * @param buffer       Pointer to the interleaved ALSA audio buffer.
+ * @param frames       Number of frames in the buffer (total samples = frames *
+ * 2).
+ * @param volume_boost The multiplier factor (1.0 = normal, 2.0 = double
+ * volume).
+ */
+void safe_volume_boost_alsa(int16_t *buffer, int frames, float volume_boost) {
+  int total_samples = frames * 2; // Stereo interleaved channels (L, R, L, R)
+  float max_peak = 0.0001f;
+
+  // Allocate a temporary floating-point buffer to prevent premature integer
+  // clipping
+  float *float_workspace = (float *)malloc(total_samples * sizeof(float));
+  if (float_workspace == NULL)
+    return; // Fail-safe guard if out of memory
+
+  // Step 1: Unpack integers to floats and apply the raw volume boost
+  for (int i = 0; i < total_samples; i++) {
+    // Convert to a standardized -1.0 to 1.0 decimal scale
+    float normalized_sample = (float)buffer[i] / 32767.0f;
+
+    // Multiply by your boost value (this can safely push past 1.0 temporarily)
+    float_workspace[i] = normalized_sample * volume_boost;
+
+    // Track the single highest volume peak created by the boost
+    float abs_val = fabsf(float_workspace[i]);
+    if (abs_val > max_peak) {
+      max_peak = abs_val;
+    }
+  }
+
+  // Step 2: Calculate a normalization scalar if the boost pushed the audio into
+  // distortion
+  float limiter_scalar = 1.0f;
+  if (max_peak > 1.0f) {
+    // If the boost caused clipping, compress it perfectly back down to a clean
+    // 0dBFS ceiling
+    limiter_scalar = 1.0f / max_peak;
+  }
+
+  // Step 3: Apply the limiter scalar, clamp limits, and pack cleanly back to
+  // 16-bit integers
+  for (int i = 0; i < total_samples; i++) {
+    float finalized_sample = float_workspace[i] * limiter_scalar;
+
+    // Hard boundary safety guards to completely eliminate integer wrap-around
+    // noise
+    if (finalized_sample > 1.0f)
+      finalized_sample = 1.0f;
+    if (finalized_sample < -1.0f)
+      finalized_sample = -1.0f;
+
+    // Scale cleanly back to ALSA hardware architecture limits
+    buffer[i] = (int16_t)(finalized_sample * 32767.0f);
+  }
+
+  // Free the temporary workspace memory
+  free(float_workspace);
+}
+
+double stable_master_gain = 1.0;
+double current_volume_envelope =
+    1000.0; // Start with a safe baseline peak estimate
+
+void increaseVolume() {
+  // For PulseAudio
+  // system("pactl set-sink-volume @DEFAULT_SINK@ +10%");
+
+  // For PipeWire
+  // system("wpctl set-volume @DEFAULT_AUDIO_SINK@ 10%+");
+
+  // For ALSA directly
+  system("amixer set Master 100%+");
+}
+
+// --- PINK NOISE STATE (VOSS-MCCARTNEY ALGORITHM) ---
+#define PINK_ROWS 12
+float pink_rows[PINK_ROWS] = {0.0f};
+float pink_running_sum = 0.0f;
+unsigned int pink_index = 0;
+
+float generate_pink_noise() {
+  unsigned int last_index = pink_index;
+  pink_index = (pink_index + 1) & ((1 << PINK_ROWS) - 1);
+
+  // Count trailing zeros to determine which row to update
+  int diff = pink_index ^ last_index;
+  int row = 0;
+  while ((diff & 1) == 0) {
+    diff >>= 1;
+    row++;
+  }
+
+  // Replace the old row value with a new random float
+  pink_running_sum -= pink_rows[row];
+  float new_val = (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
+  pink_rows[row] = new_val;
+  pink_running_sum += new_val;
+
+  // Add a fresh white noise sample to keep the highest frequencies crisp
+  float white = (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
+  return (pink_running_sum + white) / (float)(PINK_ROWS + 1);
+}
+
 // --- HIGH-PASS FILTER VARIABLES (REMOVES BASS RUMBLE) ---
 float hp_prev_in_l = 0.0f;
 float hp_prev_out_l = 0.0f;
@@ -24,7 +132,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.05f;
+float fluid_smudge_factor = 0.040f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -52,9 +160,13 @@ void init_hydro_audio() {
 // 102.5 Hz minus 100.0 Hz creates a 2.5 Hz Delta Beat illusion in the brain.
 double carrier_phase_left = 0.0;
 double carrier_phase_right = 0.0;
-double carrier_freq_left = 40.0;  // Base carrier pitch in Left Ear
-double carrier_freq_right = 42.5; // Delta shifted pitch in Right Ear
-double binaural_volume = 0.05;    // Mix level (0.05 = 5%). Keep it low to blend
+double carrier_freq_left =
+    40.0 * (432.0 / 440.0); // Retuned to 432Hz scale (39.27 Hz)
+double carrier_freq_right =
+    42.5 * (432.0 / 440.0); // Retuned to 432Hz scale (41.73 Hz)
+
+// Delta shifted pitch in Right Ear
+double binaural_volume = 0.05; // Mix level (0.05 = 5%). Keep it low to blend
 // Gain & Headroom Weights (Boosts volume without clipping)
 // Gain & Headroom Weights (Boosts volume without clipping)
 // Gain & Mix Control (Boosts volume without clipping)
@@ -105,10 +217,10 @@ const float dry_mix = 0.65f; // Volume of original untouched audio
 const float wet_mix = 0.45f; // Volume of
 
 // Global Master Loudness Control (0.0 to 1.0)
-const double MASTER_VOLUME = 20;
-double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.00005;
-double DROPLET_SIZE_MAX = 0.0025;
+const double MASTER_VOLUME = 160;
+double BUBBLE_RATE_HZ = 4.5;
+double DROPLET_SIZE_MIN = 0.05;
+double DROPLET_SIZE_MAX = 2.5;
 typedef struct {
   int active;
   double current_phase;
@@ -154,17 +266,13 @@ void trigger_droplet() {
           rand_double(0.3, 0.7) * (1.0 / (double)NUM_DROPLETS);
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
-droplets[i].sweep_start = rand_double(150.0, 20000.0) * size_factor;
-double sweep_end = droplets[i].sweep_start * rand_double(1.2, 1.8); // Gentle upward chirp
+      // Adjusted for 432Hz tuning
+      droplets[i].sweep_start =
+          rand_double(50.0, 800.0) * size_factor * 0.981818;
+      double sweep_end = droplets[i].sweep_start * rand_double(1.2, 1.8);
 
-          droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
-      // Sweep target climbs swiftly away from bass rumble to create clean fluid
-      // definition
-      /*  droplets[i].sweep_end =
-            droplets[i].sweep_start + rand_double(2000, 16500.0) * size_factor;
-        droplets[i].sweep_range = droplets[i].sweep_end -
-        droplets[i].sweep_start;
-  */
+      droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
+
       // Stereo Position assignment (0.0 = Far Left, 1.0 = Far Right)
       double pan = rand_double(0.0, 1.0);
       droplets[i].pan_left = sqrt(1.0 - pan); // Equal-power panning curve
@@ -202,7 +310,7 @@ float step_sph_hydro_sample(float carrier_freq) {
     }
     // Hydroacoustic calculation: p = c^2 * delta_rho (Water speed constant
     // ~1500m/s scaled)
-    h_nodes[i].prs = 22500.0f * (local_accumulation - 1.0f);
+    h_nodes[i].prs = 1850000.0f * (local_accumulation - 1.0f);
   }
 
   // 2. Momentum transformation (Pressure gradient accelerating the acoustic
@@ -219,23 +327,24 @@ float step_sph_hydro_sample(float carrier_freq) {
         force_gradient += -0.5f * (h_nodes[i].prs + h_nodes[j].prs) * sign;
       }
     }
- //   h_nodes[i].vel += DT * force_gradient;
- //   h_nodes[i].pos += DT * h_nodes[i].vel;
- // }
-     h_nodes[ i]. vel += DT * force_gradient;
+
+    h_nodes[i].vel += DT * force_gradient;
 
     // --- ADD THIS LINE TO INCREASE VISCOSITY ---
-    h_nodes[ i]. vel -= DT * 4.5f * h_nodes[ i]. vel; 
+    h_nodes[i].vel -= DT * 9.0f * h_nodes[i].vel;
 
-    h_nodes[ i]. pos += DT * h_nodes[ i]. vel;
-}
-
+    h_nodes[i].pos += DT * h_nodes[i].vel;
+  }
 
   // Return the pressure wave sample captured at the far end node of the array
   return h_nodes[AUDIO_P_COUNT - 1].prs;
 }
+double current_gain = 1.0;
+double target_gain = 1.0;
+
 int main() {
   srand((unsigned int)time(NULL));
+  increaseVolume();
 
   snd_pcm_t *pcm_handle;
   snd_pcm_hw_params_t *params;
@@ -280,17 +389,20 @@ int main() {
 
   while (1) {
     for (int f = 0; f < BUFFER_FRAMES; f++) {
-      if (rand_double(0.0, 100.0) < (1.5 * speed_modifier)) {
+      // --- REALISTIC JITTERED DROPLET TRIGGER ---
+      // Modulate the threshold with an erratic wave to simulate splashing
+      // bursts
+      double cluster_jitter = 1.0 + 0.8 * sin(total_elapsed_time * 7.3) *
+                                        cos(total_elapsed_time * 19.1);
+      if (rand_double(0.0, 100.0) < (1.5 * speed_modifier * cluster_jitter)) {
         trigger_droplet();
-        
       }
-      
+
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
       // saturated
-      // if (rand_double (0.0, 100.0) < 1.5)
-      //  {
-      //     trigger_droplet ();
-      // }
+      if (rand_double(0.0, 100.0) < 1.5) {
+        trigger_droplet();
+      }
       total_elapsed_time += (1.0 / 44100.0);
 
       // Dillon Baston 64-Grid Coordinate Vector Mechanics
@@ -308,10 +420,13 @@ int main() {
       macro_flow_surge = 0.825f + (slow_env_drift * 0.175f);
       float dynamic_base_pitch =
           45.0f + ((float)cell_y / (float)GRID_SIZE) * 70.0f;
+
+      // Apply 432Hz tuning scale multiplier (432.0 / 440.0)
+      dynamic_base_pitch *= 0.981818f;
+
       float final_base_frequency = dynamic_base_pitch +
                                    (slow_env_drift * 15.0f) +
                                    MASTER_VOLUME * macro_flow_surge;
-      float long_term_duration_mod = 1.0f + (slow_env_drift * 0.35f);
 
       // ASSIGN MODIFIER: Sets the global variable to manage large, heavy bubble
       // spawning
@@ -327,39 +442,70 @@ int main() {
       noise_state ^= (noise_state << 5);
       float random_roll_L = (float)(noise_state & 0xFFFF) / 65535.0f;
       float random_roll_R = (float)((noise_state >> 16) & 0xFFFF) / 65535.0f;
+      // Sum overlapping polyphonic voices smoothly
+      float scholastic_water_L = 0.0f;
+      float scholastic_water_R = 0.0f;
 
       // Asynchronously schedule new bubbles into empty voice slots using the
       // grid density
       if (random_roll_L < current_grid_density) {
+        // === VAN DEN DOEL MATRIX OSCILLATOR (Lines 364-400) ===
         for (int v = 0; v < MAX_POLYPHONY; v++) {
-          if (!drops_L[v].active) {
-            drops_L[v].active = 1;
-            drops_L[v].age = 0.0f;
-            drops_L[v].duration = 3000.0f + (random_roll_L * 4000.0f);
-            drops_L[v].base_freq =
-                current_grid_density + (random_roll_L * 100.0f);
-            drops_L[v].amp_envelope = 0.1f + (random_roll_L * 0.4f);
-            break;
+          if (drops_L[v].active || drops_R[v].active) {
+            // Update age based on sample steps
+            if (drops_L[v].active)
+              drops_L[v].age += 1.0f;
+            if (drops_R[v].active)
+              drops_R[v].age += 1.0f;
+
+            // Physics-based parameters: 15% freq rise, exponential decay
+            float progressL = drops_L[v].age / drops_L[v].duration;
+            float progressR = drops_R[v].age / drops_R[v].duration;
+
+            // ... (Applied to freq and amp for L/R)
+
+            // Final synthesis
+            scholastic_water_L +=
+                sinf(drops_L[v].age *
+                     (2.0f * 3.14159265f *
+                      (drops_L[v].base_freq * (1.0f + 0.15f * progressL)) /
+                      44100.0f)) *
+                (drops_L[v].amp_envelope *
+                 sinf(3.14159265f * progressL * 0.1f) *
+                 expf(-6.0f * progressL));
+            // (Analogous code for drops_R)
           }
         }
       }
       if (random_roll_R < current_grid_density) {
+        // === VAN DEN DOEL MATRIX OSCILLATOR (Lines 364-400) ===
         for (int v = 0; v < MAX_POLYPHONY; v++) {
-          if (!drops_R[v].active) {
-            drops_R[v].active = 1;
-            drops_R[v].age = 0.0f;
-            drops_R[v].duration = 3000.0f + (random_roll_R * 4000.0f);
-            drops_R[v].base_freq =
-                current_grid_density + (random_roll_R * 100.0f);
-            drops_R[v].amp_envelope = 0.1f + (random_roll_R * 0.4f);
-            break;
+          if (drops_L[v].active || drops_R[v].active) {
+            // Update age based on sample steps
+            if (drops_L[v].active)
+              drops_L[v].age += 1.0f;
+            if (drops_R[v].active)
+              drops_R[v].age += 1.0f;
+
+            // Physics-based parameters: 15% freq rise, exponential decay
+            float progressL = drops_L[v].age / drops_L[v].duration;
+            float progressR = drops_R[v].age / drops_R[v].duration;
+
+            // ... (Applied to freq and amp for L/R)
+
+            // Final synthesis
+            scholastic_water_L +=
+                sinf(drops_L[v].age *
+                     (2.0f * 3.14159265f *
+                      (drops_L[v].base_freq * (1.0f + 0.15f * progressL)) /
+                      44100.0f)) *
+                (drops_L[v].amp_envelope *
+                 sinf(3.14159265f * progressL * 0.1f) *
+                 expf(-6.0f * progressL));
+            // (Analogous code for drops_R)
           }
         }
       }
-
-      // Sum overlapping polyphonic voices smoothly
-      float scholastic_water_L = 0.0f;
-      float scholastic_water_R = 0.0f;
 
       for (int v = 0; v < MAX_POLYPHONY; v++) {
         if (drops_L[v].active) {
@@ -412,14 +558,14 @@ int main() {
 
       // 4. Strict boundary ceiling clamp checks (Stops digital static
       // completely)
-      if (amplified_L > 32767)
-        amplified_L = 32767;
-      if (amplified_L < -32768)
-        amplified_L = -32768;
-      if (amplified_R > 32767)
-        amplified_R = 32767;
-      if (amplified_R < -32768)
-        amplified_R = -32768;
+      /*      if (amplified_L > 32767)
+              amplified_L = 32767;
+            if (amplified_L < -32768)
+              amplified_L = -32768;
+            if (amplified_R > 32767)
+              amplified_R = 32767;
+            if (amplified_R < -32768)
+              amplified_R = -32768;*/
 
       //
       double carrier_left = sin(carrier_phase_left) * binaural_volume;
@@ -448,17 +594,8 @@ int main() {
             continue;
           }
 
-          //    double progress = droplets[i].age / droplets[i].duration;
-
-          // Smooth window curve clears out edge clicks and abrupt pops
-          //     double envelope = sin(progress * PI);
-
-          // Pure linear calculation prevents sub-bass lingering distortion
-          //      double current_freq = droplets[i].sweep_start +
-          //      (droplets[i].sweep_range * progress);
-
-          
           double progress = droplets[i].age / droplets[i].duration;
+          progress = droplets[i].age / droplets[i].duration;
 
           if (progress >= 1.0) {
             droplets[i].active = 0;
@@ -472,17 +609,18 @@ int main() {
 
           // 2. EXPONENTIAL VOLUME DECAY ENVELOPE
           // Sharp initial burst with a smooth, natural ringing tail
-// Replace your old envelope code with this:
-double attack = sin(PI * progress * 0.1); // Fast fade in to prevent pops
-double decay = exp(-6.0 * progress);      // Sharp, organic ring-out tail
-double envelope = droplets[i].amplitude * attack * decay;
-
+          // Replace your old envelope code with this:
+          double attack =
+              sin(PI * progress * 0.1);        // Fast fade in to prevent pops
+          double decay = exp(-6.0 * progress); // Sharp, organic ring-out tail
+          double envelope = droplets[i].amplitude * attack * decay;
 
           // 2. Hollow watery envelope
           // double envelope = droplets[i].amplitude * sin(progress * PI) * (1.0
           // - progress);
           double sample_mono = envelope * sin(droplets[i].current_phase);
 
+          // 3. Pressure wobble phase update
           // 3. Pressure wobble phase update
           double bubble_wobble =
               1.0 + 0.08 * sin(2.0 * PI * 80.0 * droplets[i].age);
@@ -493,26 +631,6 @@ double envelope = droplets[i].amplitude * attack * decay;
             droplets[i].current_phase =
                 fmod(droplets[i].current_phase, 2.0 * PI);
           }
-
-          // Generate sine wave sample
-          //    double sample_mono = envelope * sin(droplets[i].current_phase);
-          /*
-                    // Update phase based on the accelerating frequency
-                    droplets[i].current_phase += (2.0 * PI * current_freq) /
-             SAMPLE_RATE; if (droplets[i].current_phase > 2.0 * PI) {
-                      droplets[i].current_phase -= 2.0 * PI;
-                    }
-
-                    // Track strict phase continuity to ensure smooth
-             transitions
-                    //  droplets[ i]. current_phase += (2.0 * PI * current_freq)
-             /
-                    //  SAMPLE_RATE;
-                    droplets[i].current_phase += 2.0 * PI * current_freq * dt;
-                    if (droplets[i].current_phase > 2.0 * PI) {
-                      droplets[i].current_phase =
-                          fmod(droplets[i].current_phase, 2.0 * PI);
-                    } */
 
           // Compute single mono raw sample contribution
           //    double sample_mono = sin(droplets[i].current_phase) * envelope *
@@ -547,27 +665,15 @@ double envelope = droplets[i].amplitude * attack * decay;
       reverb_idx = (reverb_idx + 1) % REVERB_DELAY_SAMPLES;
 
       // 6. Native hard clipping protection limiters
-      if (out_l > 1.0f)
-        out_l = 1.0f;
-      if (out_l < -1.0f)
-        out_l = -1.0f;
-      if (out_r > 1.0f)
-        out_r = 1.0f;
-      if (out_r < -1.0f)
-        out_r = -1.0f;
+      /*   if (out_l > 1.0f)
+           out_l = 1.0f;
+         if (out_l < -1.0f)
+           out_l = -1.0f;
+         if (out_r > 1.0f)
+           out_r = 1.0f;
+         if (out_r < -1.0f)
+           out_r = -1.0f;*/
 
-      // 7. Overwrite original array positions with reverberated sound
-
-      // 2. Soft-clip the signals using a hyperbolic tangent function (tanh)
-      // This naturally compresses the audio smoothly like a professional
-      // limiter
-
-      // Convert floating point coordinates to native PCM 16-bit sound card
-      // boundaries
-      // buffer[f * 2] = (int16_t) (sat_left * 32767.0);	// Left Channel
-      // Index
-      // buffer[f * 2 + 1] = (int16_t) (sat_right * 32767.0);	// Right Channel
-      // Index
       // 1. Advance our master timeline clock single-sample by single-sample
 
       // 1. Progress the master timeline clock sample-by-sample
@@ -583,35 +689,25 @@ double envelope = droplets[i].amplitude * attack * decay;
       // ==========================================
 
       float constant_background_roar =
-          (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
-
-      // 5. Output clean raw interleaved binary streams to standard out
-      //  int16_t out_sample;
-      //    float constant_background_roar =
-      //     (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
-
-      // Apply a rough bandpass filter to mask the noise or damp it heavily
-      constant_background_roar *=
-          0.03f; // Keep it low (3% volume) to act as a glue layer
+          generate_pink_noise() *
+          0.5f; // ~12% volume
+                // Keep it low (3% volume) to act as a glue layer
 
       if (sample_counter++ >= 64) {
-        cached_hydro_sample = step_sph_hydro_sample(150.0f); // Run SPH step
-        sample_counter = 0;                                  // Reset counter
+        cached_hydro_sample =
+            step_sph_hydro_sample(147.27f); // 150.0f * (432 / 440)
+        sample_counter = 0;                 // Reset counter
       }
 
-   //   float hydro_sample = cached_hydro_sample;
-// Turn down or comment out the SPH injection weight entirely:
-float hydro_sample = cached_hydro_sample * 32767.0f * 0.0f; // Set multiplier to 0.0f
+      //   float hydro_sample = cached_hydro_sample;
+      // Turn down or comment out the SPH injection weight entirely:
+      float hydro_sample = cached_hydro_sample * 1.0f; // Set multiplier to 0.0f
 
       // Hard limiter to safely prevent digital clipping distortion
       if (hydro_sample > 1.0f)
         hydro_sample = 1.0f;
       if (hydro_sample < -1.0f)
         hydro_sample = -1.0f;
-
-      // 3. Write directly to your project's active output array type
-      // If your code uses 16-bit integer streams (AUDIO_S16):
-      //    audio_output_buffer[i] = (int16_t)(hydro_sample * 32767.0f);
 
       // --- INSERT THIS DIRECT BLOCK TO LIQUIDIZE THE SOUND ---
 
@@ -648,15 +744,22 @@ float hydro_sample = cached_hydro_sample * 32767.0f * 0.0f; // Set multiplier to
       amplified_R = current_hp_r;
 
       // -----------------------------------------------------------------
+      float roar_L = generate_pink_noise() * 0.03f;
+      float roar_R = generate_pink_noise() * 0.03f;
 
-      buffer[f * 2] =
-          (int16_t)(((amplified_L + constant_background_roar + hydro_sample)));
-      buffer[f * 2 + 1] =
-          (int16_t)(((amplified_R + constant_background_roar + hydro_sample)));
+      buffer[f * 2] = amplified_L + roar_L + hydro_sample;
+      buffer[f * 2 + 1] = amplified_R + roar_R + hydro_sample;
     }
 
+    safe_volume_boost_alsa(buffer, BUFFER_FRAMES, 3.5f);
+
+    // 3. Write the unclipped, maximized buffer directly to your ALSA sound card
+    // handle
     snd_pcm_sframes_t written =
         snd_pcm_writei(pcm_handle, buffer, BUFFER_FRAMES);
+    if (written < 0) {
+      snd_pcm_prepare(pcm_handle); // Standard ALSA underrun recovery handler
+    }
     if (written < 0) {
       written = snd_pcm_recover(pcm_handle, written, 0);
     }
