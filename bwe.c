@@ -24,7 +24,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.008f;
+float fluid_smudge_factor = 0.05f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -154,9 +154,9 @@ void trigger_droplet() {
           rand_double(0.3, 0.7) * (1.0 / (double)NUM_DROPLETS);
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
-      droplets[i].sweep_start =
-          rand_double(150, 20000.0) * size_factor + micro_drift;
-      double sweep_end = droplets[i].sweep_start * rand_double(3.0, 6.0);
+droplets[i].sweep_start = rand_double(150.0, 20000.0) * size_factor;
+double sweep_end = droplets[i].sweep_start * rand_double(1.2, 1.8); // Gentle upward chirp
+
           droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
@@ -180,7 +180,7 @@ float lpf_state_r = 0.0f;
 // Smoothing factor alpha (Value between 0.0 and 1.0)
 // Closer to 0.0 = Lower cutoff frequency (muffled/deeper)
 // Closer to 1.0 = Higher cutoff frequency (sharper/brighter)
-const float LPF_ALPHA = 0.020f;
+const float LPF_ALPHA = 0.040f;
 float step_sph_hydro_sample(float carrier_freq) {
   const float DT =
       1.0f / 44100.0f; // Exact time step for 44.1kHz audio sampling rate
@@ -271,8 +271,8 @@ int main() {
   }
 
   int16_t buffer[BUFFER_FRAMES * 2];
-  double speed_modifier = 0.5; // 1.0 is normal, 0.5 is half speed (slower)
-  double dt = (1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ) * speed_modifier;
+  double speed_modifier = 1.0; // 1.0 is normal, 0.5 is half speed (slower)
+  double dt = (1.0 / SAMPLE_RATE);
 
   // double dt = 1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ;
 
@@ -472,8 +472,11 @@ int main() {
 
           // 2. EXPONENTIAL VOLUME DECAY ENVELOPE
           // Sharp initial burst with a smooth, natural ringing tail
-          double envelope =
-              droplets[i].amplitude * exp(-5.0 * progress) * sin(PI * progress);
+// Replace your old envelope code with this:
+double attack = sin(PI * progress * 0.1); // Fast fade in to prevent pops
+double decay = exp(-6.0 * progress);      // Sharp, organic ring-out tail
+double envelope = droplets[i].amplitude * attack * decay;
+
 
           // 2. Hollow watery envelope
           // double envelope = droplets[i].amplitude * sin(progress * PI) * (1.0
@@ -597,7 +600,9 @@ int main() {
       }
 
    //   float hydro_sample = cached_hydro_sample;
-float hydro_sample = cached_hydro_sample * 32767.0f * 0.5f; 
+// Turn down or comment out the SPH injection weight entirely:
+float hydro_sample = cached_hydro_sample * 32767.0f * 0.0f; // Set multiplier to 0.0f
+
       // Hard limiter to safely prevent digital clipping distortion
       if (hydro_sample > 1.0f)
         hydro_sample = 1.0f;
