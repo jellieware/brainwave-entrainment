@@ -1,3 +1,5 @@
+//author:alex terranova(2026)
+
 #include <alsa/asoundlib.h>
 #include <math.h>
 #include <stdint.h>
@@ -22,7 +24,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.025f;
+float fluid_smudge_factor = 0.012f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -153,8 +155,9 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(50, 600.0) * size_factor + micro_drift;
-
+          rand_double(50, 1200.0) * size_factor + micro_drift;
+      double sweep_end = droplets[i].sweep_start * rand_double(3.0, 6.0);
+          droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
       /*  droplets[i].sweep_end =
@@ -177,7 +180,7 @@ float lpf_state_r = 0.0f;
 // Smoothing factor alpha (Value between 0.0 and 1.0)
 // Closer to 0.0 = Lower cutoff frequency (muffled/deeper)
 // Closer to 1.0 = Higher cutoff frequency (sharper/brighter)
-const float LPF_ALPHA = 0.100f;
+const float LPF_ALPHA = 0.040f;
 float step_sph_hydro_sample(float carrier_freq) {
   const float DT =
       1.0f / 44100.0f; // Exact time step for 44.1kHz audio sampling rate
@@ -216,9 +219,17 @@ float step_sph_hydro_sample(float carrier_freq) {
         force_gradient += -0.5f * (h_nodes[i].prs + h_nodes[j].prs) * sign;
       }
     }
-    h_nodes[i].vel += DT * force_gradient;
-    h_nodes[i].pos += DT * h_nodes[i].vel;
-  }
+ //   h_nodes[i].vel += DT * force_gradient;
+ //   h_nodes[i].pos += DT * h_nodes[i].vel;
+ // }
+     h_nodes[ i]. vel += DT * force_gradient;
+
+    // --- ADD THIS LINE TO INCREASE VISCOSITY ---
+    h_nodes[ i]. vel -= DT * 4.5f * h_nodes[ i]. vel; 
+
+    h_nodes[ i]. pos += DT * h_nodes[ i]. vel;
+}
+
 
   // Return the pressure wave sample captured at the far end node of the array
   return h_nodes[AUDIO_P_COUNT - 1].prs;
@@ -271,7 +282,9 @@ int main() {
     for (int f = 0; f < BUFFER_FRAMES; f++) {
       if (rand_double(0.0, 100.0) < (1.5 * speed_modifier)) {
         trigger_droplet();
+        
       }
+      
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
       // saturated
       // if (rand_double (0.0, 100.0) < 1.5)
@@ -444,8 +457,7 @@ int main() {
           //      double current_freq = droplets[i].sweep_start +
           //      (droplets[i].sweep_range * progress);
 
-          double sweep_end = droplets[i].sweep_start * rand_double(3.0, 6.0);
-          droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
+          
           double progress = droplets[i].age / droplets[i].duration;
 
           if (progress >= 1.0) {
@@ -584,8 +596,8 @@ int main() {
         sample_counter = 0;                                  // Reset counter
       }
 
-      float hydro_sample = cached_hydro_sample;
-
+   //   float hydro_sample = cached_hydro_sample;
+float hydro_sample = cached_hydro_sample * 32767.0f * 0.5f; 
       // Hard limiter to safely prevent digital clipping distortion
       if (hydro_sample > 1.0f)
         hydro_sample = 1.0f;
