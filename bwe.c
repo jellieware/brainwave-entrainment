@@ -24,7 +24,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.012f;
+float fluid_smudge_factor = 0.008f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -155,7 +155,7 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(50, 1200.0) * size_factor + micro_drift;
+          rand_double(150, 20000.0) * size_factor + micro_drift;
       double sweep_end = droplets[i].sweep_start * rand_double(3.0, 6.0);
           droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
@@ -180,7 +180,7 @@ float lpf_state_r = 0.0f;
 // Smoothing factor alpha (Value between 0.0 and 1.0)
 // Closer to 0.0 = Lower cutoff frequency (muffled/deeper)
 // Closer to 1.0 = Higher cutoff frequency (sharper/brighter)
-const float LPF_ALPHA = 0.040f;
+const float LPF_ALPHA = 0.020f;
 float step_sph_hydro_sample(float carrier_freq) {
   const float DT =
       1.0f / 44100.0f; // Exact time step for 44.1kHz audio sampling rate
@@ -271,7 +271,7 @@ int main() {
   }
 
   int16_t buffer[BUFFER_FRAMES * 2];
-  double speed_modifier = 1; // 1.0 is normal, 0.5 is half speed (slower)
+  double speed_modifier = 0.5; // 1.0 is normal, 0.5 is half speed (slower)
   double dt = (1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ) * speed_modifier;
 
   // double dt = 1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ;
