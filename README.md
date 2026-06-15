@@ -5,9 +5,6 @@
 Audio Preview:
 <br><br>
 
-[bwe_preview.wav](https://github.com/user-attachments/files/28934262/bwe_preview.wav)
-
-
 
 <br><br>
 This program will generate a small synthetic babbling brook tuned at 432hz with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
