@@ -261,16 +261,16 @@ float macro_flow_surge = 1.0f;
 #define PI 3.14159265358979323846
 #define PCM_DEVICE "default"
 #define BUFFER_FRAMES 2048
-#define NUM_DROPLETS 300       // Targeted dense overlap array pool size
+#define NUM_DROPLETS 300          // Targeted dense overlap array pool size
 #define REVERB_DELAY_SAMPLES 6000 // Echo size buffer (~136ms)
 float reverb_buffer_l[REVERB_DELAY_SAMPLES] = {0.0f};
 float reverb_buffer_r[REVERB_DELAY_SAMPLES] = {0.0f};
 int reverb_idx = 0;
 
 // Acoustic space adjusters
-const float feedback = 0.1f; // Decay size (0.1 = tiny room, 0.92 = huge cave)
-const float dry_mix = 0.65f; // Volume of original untouched audio
-const float wet_mix = 0.45f; // Volume of
+const float feedback = 0.001f; // Decay size (0.1 = tiny room, 0.92 = huge cave)
+const float dry_mix = 0.65f;   // Volume of original untouched audio
+const float wet_mix = 0.45f;   // Volume of
 
 // Global Master Loudness Control (0.0 to 1.0)
 const double MASTER_VOLUME = 80;
@@ -331,11 +331,11 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(100, 500.0) * size_factor + micro_drift;
+          rand_double(50, 600.0) * size_factor + micro_drift;
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
-   
+
       // Stereo Position assignment (0.0 = Far Left, 1.0 = Far Right)
       double pan = rand_double(0.0, 1.0);
       droplets[i].pan_left = sqrt(1.0 - pan); // Equal-power panning curve
@@ -396,6 +396,146 @@ float step_sph_hydro_sample(float carrier_freq) {
 
   // Return the pressure wave sample captured at the far end node of the array
   return h_nodes[AUDIO_P_COUNT - 1].prs;
+}
+
+#define METALLIC_FIX_STAGES 4
+static const int BLUR_DELAYS[METALLIC_FIX_STAGES] = {1433, 1973, 2657, 3529};
+
+typedef struct {
+  float *buffer;
+  int size;
+  int idx;
+  float lpf_state;
+} OrganicBlurStage;
+
+static OrganicBlurStage blur_L[METALLIC_FIX_STAGES];
+static OrganicBlurStage blur_R[METALLIC_FIX_STAGES];
+
+// Hydro-acoustic resonance filters (Bi-quad state variables to shape brook
+// gurgles)
+static float x1_L = 0.0f, x2_L = 0.0f, y1_L = 0.0f, y2_L = 0.0f;
+static float x1_R = 0.0f, x2_R = 0.0f, y1_R = 0.0f, y2_R = 0.0f;
+
+static int blur_initialized = 0;
+
+void init_organic_blur_static_safe(void) {
+  if (blur_initialized)
+    return;
+  for (int i = 0; i < METALLIC_FIX_STAGES; i++) {
+    blur_L[i].size = BLUR_DELAYS[i];
+    blur_L[i].buffer = (float *)malloc(BLUR_DELAYS[i] * sizeof(float));
+    blur_R[i].size = BLUR_DELAYS[i];
+    blur_R[i].buffer = (float *)malloc(BLUR_DELAYS[i] * sizeof(float));
+
+    if (blur_L[i].buffer && blur_R[i].buffer) {
+      memset(blur_L[i].buffer, 0, BLUR_DELAYS[i] * sizeof(float));
+      memset(blur_R[i].buffer, 0, BLUR_DELAYS[i] * sizeof(float));
+    }
+    blur_L[i].idx = 0;
+    blur_L[i].lpf_state = 0.0f;
+    blur_R[i].idx = 0;
+    blur_R[i].lpf_state = 0.0f;
+  }
+
+  // Clear out biquad resonators
+  x1_L = x2_L = y1_L = y2_L = 0.0f;
+  x1_R = x2_R = y1_R = y2_R = 0.0f;
+
+  blur_initialized = 1;
+}
+
+float process_organic_sample(float input, OrganicBlurStage *stages) {
+  float sample = input;
+  const float diffusion = 0.65f;
+  const float damping = 0.35f;
+
+  for (int i = 0; i < METALLIC_FIX_STAGES; i++) {
+    if (!stages[i].buffer)
+      return input;
+    int idx = stages[i].idx;
+    int size = stages[i].size;
+    float delayed = stages[i].buffer[idx];
+
+    stages[i].lpf_state += damping * (delayed - stages[i].lpf_state);
+    delayed = stages[i].lpf_state;
+
+    float output = -diffusion * sample + delayed;
+    stages[i].buffer[idx] = sample + diffusion * delayed;
+
+    stages[i].idx = (idx + 1) % size;
+    sample = output;
+  }
+  return sample;
+}
+
+void blur_bubbles_engine(int16_t *buffer, int frames) {
+  if (!blur_initialized) {
+    init_organic_blur_static_safe();
+  }
+
+  // --- TUNING A REALISTIC BROOK CHOP ---
+  const float ocean_wash_blend =
+      0.30f; // Lowered (was 0.55f) to bring out bubble sharpness
+  const float stream_gain_limit =
+      1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
+
+  // Extra headroom to kill remaining line static
+
+  // Brook resonant filter coefficients (tuned for a 450Hz liquid "hollow"
+  // cavity boost at 44.1kHz) Changing these shapes whether the brook sounds
+  // like a tiny stream or a wider river bed.
+  const float b0 = 0.046f, b1 = 0.0f, b2 = -0.046f;
+  const float a1 = -1.890f, a2 = 0.907f;
+
+  for (int f = 0; f < frames; f++) {
+    float left_in = (float)buffer[f * 2];
+    float right_in = (float)buffer[f * 2 + 1];
+
+    // 1. Process the perfect ocean blur setting to get our underlying water
+    // friction flow
+    float wet_l = process_organic_sample(left_in, blur_L);
+    float wet_r = process_organic_sample(right_in, blur_R);
+
+    // 2. Mix the raw stream with the wash before cavity filtering
+    float raw_mix_L =
+        (left_in * (1.0f - ocean_wash_blend)) + (wet_l * ocean_wash_blend);
+    float raw_mix_R =
+        (right_in * (1.0f - ocean_wash_blend)) + (wet_r * ocean_wash_blend);
+
+    // 3. Pass the mixed audio through the Hydro-Acoustic Cavity Resonators
+    // This isolates the static hiss, rounds it off, and pushes the liquid
+    // "bloop" notes forward
+    float brook_L =
+        b0 * raw_mix_L + b1 * x1_L + b2 * x2_L - a1 * y1_L - a2 * y2_L;
+    x2_L = x1_L;
+    x1_L = raw_mix_L;
+    y2_L = y1_L;
+    y1_L = brook_L;
+
+    float brook_R =
+        b0 * raw_mix_R + b1 * x1_R + b2 * x2_R - a1 * y1_R - a2 * y2_R;
+    x2_R = x1_R;
+    x1_R = raw_mix_R;
+    y2_R = y1_R;
+    y1_R = brook_R;
+
+    // 4. Scale and compress gently using headroom limits
+    float out_l = brook_L * stream_gain_limit;
+    float out_r = brook_R * stream_gain_limit;
+
+    // Hard boundary protection clamps
+    if (out_l > 32767.0f)
+      out_l = 32767.0f;
+    if (out_l < -32768.0f)
+      out_l = -32768.0f;
+    if (out_r > 32767.0f)
+      out_r = 32767.0f;
+    if (out_r < -32768.0f)
+      out_r = -32768.0f;
+
+    buffer[f * 2] = (int16_t)out_l;
+    buffer[f * 2 + 1] = (int16_t)out_r;
+  }
 }
 
 int main() {
@@ -653,7 +793,6 @@ int main() {
 
           double sweep_end = droplets[i].sweep_start * rand_double(3.0, 6.0);
           droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
-       
 
           double progress = droplets[i].age / droplets[i].duration;
 
@@ -681,7 +820,6 @@ int main() {
 
           // Generate sine wave sample
           //    double sample_mono = envelope * sin(droplets[i].current_phase);
-         
 
           // Compute single mono raw sample contribution
           //    double sample_mono = sin(droplets[i].current_phase) * envelope *
@@ -821,15 +959,19 @@ int main() {
       // -----------------------------------------------------------------
 
       buffer[f * 2] =
-          (int16_t)(((amplified_L + hydro_sample)));
+          (int16_t)(((amplified_L + hydro_sample + background_roar)));
       buffer[f * 2 + 1] =
-          (int16_t)(((amplified_R + hydro_sample)));
+          (int16_t)(((amplified_R + hydro_sample + background_roar)));
     }
     //   safe_volume_boost_alsa(buffer, BUFFER_FRAMES, 1.0f);
     // Locate line ~769 in your main loop right before snd_pcm_writei:
     // A smoothing_radius of 3.0f to 5.0f smooths out bubble popping textures
     // nicely.
     smooth_bubbles_sph(buffer, BUFFER_FRAMES, 5.0f);
+    blur_bubbles_engine(buffer, BUFFER_FRAMES);
+    // snd_pcm_writei(pcm_handle, buffer, BUFFER_FRAMES);
+
+    // smooth_bubbles_sph(buffer, BUFFER_FRAMES, 5.0f);
 
     // snd_pcm_writei(pcm_handle, buffer, BUFFER_FRAMES);
 
