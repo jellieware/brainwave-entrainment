@@ -9,7 +9,7 @@ Audio Preview:
 <br><br>
 This program will generate a small synthetic babbling brook with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
-This program is based on "Minnaert's formula", "Dillon Baston's" and "Van Den Doel" algorithms
+This program is based on "Minnaert's formula", "Dillon Baston" and "Van Den Doel" algorithms
 <br><br>
 *Note: No Audio files are used, all the sounds are synthetic and random.
 <br><br>
