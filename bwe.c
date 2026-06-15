@@ -132,7 +132,14 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.040f;
+float fluid_smudge_factor = 0.08f;
+// --- CONVOLUTION SMEARING ADDITIONS ---
+#define IR_SIZE 128
+float impulse_response[IR_SIZE];
+float conv_history_l[IR_SIZE] = {0.0f};
+float conv_history_r[IR_SIZE] = {0.0f};
+int ir_initialized = 0;
+
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -288,7 +295,7 @@ float lpf_state_r = 0.0f;
 // Smoothing factor alpha (Value between 0.0 and 1.0)
 // Closer to 0.0 = Lower cutoff frequency (muffled/deeper)
 // Closer to 1.0 = Higher cutoff frequency (sharper/brighter)
-const float LPF_ALPHA = 0.040f;
+const float LPF_ALPHA = 0.05f;
 float step_sph_hydro_sample(float carrier_freq) {
   const float DT =
       1.0f / 44100.0f; // Exact time step for 44.1kHz audio sampling rate
@@ -386,6 +393,15 @@ int main() {
   // double dt = 1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ;
 
   printf("Now Streaming: Babbling Brook...\n");
+  if (!ir_initialized) {
+    for (int i = 0; i < IR_SIZE; i++) {
+      // Generate raw noise burst
+      float noise = (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
+      // Exponential decay mimics a dampening water body
+      impulse_response[i] = noise * expf(-0.06f * (float)i);
+    }
+    ir_initialized = 1;
+  }
 
   while (1) {
     for (int f = 0; f < BUFFER_FRAMES; f++) {
@@ -400,9 +416,9 @@ int main() {
 
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
       // saturated
-      if (rand_double(0.0, 100.0) < 1.5) {
-        trigger_droplet();
-      }
+      //     if (rand_double(0.0, 100.0) < 1.5) {
+      //   trigger_droplet();
+      //  }
       total_elapsed_time += (1.0 / 44100.0);
 
       // Dillon Baston 64-Grid Coordinate Vector Mechanics
@@ -682,6 +698,31 @@ int main() {
           lpf_state_l + LPF_ALPHA * ((float)amplified_L - lpf_state_l);
       lpf_state_r =
           lpf_state_r + LPF_ALPHA * ((float)amplified_R - lpf_state_r);
+
+      // --- CONVOLUTION SMEARING ENGINE ---
+      // 1. Shift the convolution history arrays back by 1 sample
+      for (int i = IR_SIZE - 1; i > 0; i--) {
+        conv_history_l[i] = conv_history_l[i - 1];
+        conv_history_r[i] = conv_history_r[i - 1];
+      }
+
+      // 2. Feed the current raw integer samples scaled to normalized floats
+      conv_history_l[0] = (float)amplified_L / 32767.0f;
+      conv_history_r[0] = (float)amplified_R / 32767.0f;
+
+      // 3. Compute the matrix convolution sum
+      float smeared_sum_l = 0.0f;
+      float smeared_sum_r = 0.0f;
+      for (int i = 0; i < IR_SIZE; i++) {
+        smeared_sum_l += conv_history_l[i] * impulse_response[i];
+        smeared_sum_r += conv_history_r[i] * impulse_response[i];
+      }
+
+      // 4. Scale back up to 16-bit integer boundaries and pass back to
+      // processing A multiplier of 0.25f keeps the gain structured to avoid
+      // clipping
+      amplified_L = (int32_t)(smeared_sum_l * 32767.0f * 0.25f);
+      amplified_R = (int32_t)(smeared_sum_r * 32767.0f * 0.25f);
 
       // Convert back to integers
       amplified_L = (int32_t)lpf_state_l;
