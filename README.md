@@ -4,8 +4,7 @@
 <br><br>
 Audio Preview:
 <br><br>
-
-
+[preview_release.wav](https://github.com/user-attachments/files/28977744/preview_release.wav)
 <br><br>
 This program will generate a small synthetic babbling brook with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
