@@ -4,6 +4,123 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
+#define SPH_WINDOW_SIZE 5
+#define PINK_MAX_ROWS 12
+
+typedef struct {
+  int rows[PINK_MAX_ROWS];
+  int running_sum;
+  int index;
+} PinkNoiseGenerator;
+
+// --- VOSS-MCCARTNEY PINK NOISE GENERATOR VARIABLES ---
+#define PINK_ROWS 12
+uint32_t pink_indices = 0;
+float pink_rows[PINK_ROWS] = {0.0f};
+float pink_running_sum = 0.0f;
+
+// Optimized random seed structure matching your existing xorshift logic
+static uint32_t pink_noise_state = 987654321;
+
+float generate_pink_noise() {
+  // 1. Fast xorshift random roll mapped smoothly between -1.0f and 1.0f
+  pink_noise_state ^= (pink_noise_state << 13);
+  pink_noise_state ^= (pink_noise_state >> 17);
+  pink_noise_state ^= (pink_noise_state << 5);
+  float raw_white =
+      ((float)(pink_noise_state & 0xFFFF) / 65535.0f) * 2.0f - 1.0f;
+
+  // 2. Count trailing zeros to determine which filter row updates
+  pink_indices++;
+  int trailing_zeros = __builtin_ctz(pink_indices);
+  if (trailing_zeros >= PINK_ROWS) {
+    trailing_zeros = PINK_ROWS - 1;
+    pink_indices = 0; // Reset index counter safely
+  }
+
+  // 3. Subtract the old row value from sum, inject new random variance, update
+  // row
+  pink_running_sum -= pink_rows[trailing_zeros];
+  pink_rows[trailing_zeros] = raw_white;
+  pink_running_sum += pink_rows[trailing_zeros];
+
+  // 4. Combine the running grid array sum with an extra random flash to
+  // eliminate structural patterns
+  float finalized_pink =
+      (pink_running_sum + raw_white) / (float)(PINK_ROWS + 1);
+
+  return finalized_pink; // Balanced output scaled roughly from -1.0 to 1.0
+}
+
+float sph_cubic_spline_kernel(float distance, float h) {
+  float q = fabsf(distance) / h;
+  if (q >= 1.0f)
+    return 0.0f;
+
+  float sigma = 2.0f / (3.0f * h);
+  if (q < 0.5f) {
+    return sigma * (1.0f - 6.0f * q * q + 6.0f * q * q * q);
+  } else {
+    return sigma * (2.0f * powf(1.0f - q, 3.0f));
+  }
+}
+
+void smooth_bubbles_sph(int16_t *buffer, int frames, float smoothing_radius) {
+  int total_samples = frames * 2;
+
+  // 1. Process in floating-point space to eliminate intermediate quantization
+  // noise
+  float *temp_buffer = (float *)malloc(total_samples * sizeof(float));
+  if (temp_buffer == NULL)
+    return;
+
+  for (int i = 0; i < total_samples; i++) {
+    temp_buffer[i] = (float)buffer[i];
+  }
+
+  for (int ch = 0; ch < 2; ch++) {
+    for (int f = 0; f < frames; f++) {
+      int current_idx = f * 2 + ch;
+
+      float weighted_sum = 0.0f;
+      float total_weight = 0.0f;
+
+      for (int neighbor = -SPH_WINDOW_SIZE; neighbor <= SPH_WINDOW_SIZE;
+           neighbor++) {
+        int target_frame = f + neighbor;
+
+        if (target_frame >= 0 && target_frame < frames) {
+          int neighbor_idx = target_frame * 2 + ch;
+          float distance = (float)neighbor;
+          float weight = sph_cubic_spline_kernel(distance, smoothing_radius);
+
+          weighted_sum += temp_buffer[neighbor_idx] * weight;
+          total_weight += weight;
+        }
+      }
+
+      if (total_weight > 0.0001f) {
+        // 2. Normalize by total weight to preserve original volume gain
+        float smoothed_sample = weighted_sum / total_weight;
+
+        // 3. Simple TPDF-style dither to eliminate remaining LSB truncation
+        // static
+        float dither = (((float)rand() / (float)RAND_MAX) - 0.5f);
+        smoothed_sample += dither;
+
+        if (smoothed_sample > 32767.0f)
+          smoothed_sample = 32767.0f;
+        if (smoothed_sample < -32768.0f)
+          smoothed_sample = -32768.0f;
+
+        buffer[current_idx] = (int16_t)smoothed_sample;
+      }
+    }
+  }
+
+  free(temp_buffer);
+}
+
 void safe_volume_boost_alsa(int16_t *buffer, int frames, float volume_boost) {
   int total_samples = frames * 2; // Stereo interleaved channels (L, R, L, R)
   float max_peak = 0.0001f;
@@ -144,7 +261,7 @@ float macro_flow_surge = 1.0f;
 #define PI 3.14159265358979323846
 #define PCM_DEVICE "default"
 #define BUFFER_FRAMES 2048
-#define NUM_DROPLETS 300          // Targeted dense overlap array pool size
+#define NUM_DROPLETS 300       // Targeted dense overlap array pool size
 #define REVERB_DELAY_SAMPLES 6000 // Echo size buffer (~136ms)
 float reverb_buffer_l[REVERB_DELAY_SAMPLES] = {0.0f};
 float reverb_buffer_r[REVERB_DELAY_SAMPLES] = {0.0f};
@@ -214,15 +331,11 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(50, 300.0) * size_factor + micro_drift;
+          rand_double(100, 500.0) * size_factor + micro_drift;
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
-      /*  droplets[i].sweep_end =
-            droplets[i].sweep_start + rand_double(2000, 16500.0) * size_factor;
-        droplets[i].sweep_range = droplets[i].sweep_end -
-        droplets[i].sweep_start;
-  */
+   
       // Stereo Position assignment (0.0 = Far Left, 1.0 = Far Right)
       double pan = rand_double(0.0, 1.0);
       droplets[i].pan_left = sqrt(1.0 - pan); // Equal-power panning curve
@@ -284,6 +397,7 @@ float step_sph_hydro_sample(float carrier_freq) {
   // Return the pressure wave sample captured at the far end node of the array
   return h_nodes[AUDIO_P_COUNT - 1].prs;
 }
+
 int main() {
   srand((unsigned int)time(NULL));
 
@@ -395,15 +509,6 @@ int main() {
           // ... (Applied to freq and amp for L/R)
 
           // Final synthesis
-          /*   scholastic_water_L +=
-                 sinf(drops_L[v].age *
-                      (2.0f * 3.14159265f *
-                       (drops_L[v].base_freq * (1.0f + 0.15f * progressL)) /
-                       44100.0f)) *
-                 (drops_L[v].amp_envelope *
-                  sinf(3.14159265f * progressL * 0.1f) *
-                  expf(-6.0f * progressL));
-             // (Analogous code for drops_R)*/
 
           // New Left Channel
           float target_freq_L =
@@ -434,15 +539,6 @@ int main() {
           // ... (Applied to freq and amp for L/R)
 
           // Final synthesis
-          /*           scholastic_water_L +=
-                         sinf(drops_L[v].age *
-                              (2.0f * 3.14159265f *
-                               (drops_L[v].base_freq * (1.0f + 0.15f *
-             progressL)) / 44100.0f)) * (drops_L[v].amp_envelope *
-                          sinf(3.14159265f * progressL * 0.1f) *
-                          expf(-6.0f * progressL));
-                     // (Analogous code for drops_R)
-                  */
 
           // New Right Channel
           float target_freq_R =
@@ -557,32 +653,7 @@ int main() {
 
           double sweep_end = droplets[i].sweep_start * rand_double(3.0, 6.0);
           droplets[i].sweep_factor = sweep_end / droplets[i].sweep_start;
-          /*        double progress = droplets[i].age / droplets[i].duration;
-
-                  if (progress >= 1.0) {
-                    droplets[i].active = 0;
-                    continue;
-                  }
-
-                  // 1. EXPONENTIAL FREQUENCY SWEEP
-                  // Pitch accelerates upward drastically near the end
-                  double current_freq =
-                      droplets[i].sweep_start * pow(droplets[i].sweep_factor,
-             progress);
-
-                  // 2. EXPONENTIAL VOLUME DECAY ENVELOPE
-                  // Sharp initial burst with a smooth, natural ringing tail
-                  double envelope =
-                      droplets[i].amplitude * exp(-5.0 * progress) * sin(PI *
-             progress);
-
-                  // 2. Hollow watery envelope
-                  // double envelope = droplets[i].amplitude * sin(progress *
-             PI) * (1.0
-                  // - progress);
-                  double sample_mono = envelope *
-             sin(droplets[i].current_phase);
-        */
+       
 
           double progress = droplets[i].age / droplets[i].duration;
 
@@ -610,23 +681,7 @@ int main() {
 
           // Generate sine wave sample
           //    double sample_mono = envelope * sin(droplets[i].current_phase);
-          /*
-                    // Update phase based on the accelerating frequency
-                    droplets[i].current_phase += (2.0 * PI * current_freq) /
-             SAMPLE_RATE; if (droplets[i].current_phase > 2.0 * PI) {
-                      droplets[i].current_phase -= 2.0 * PI;
-                    }
-
-                    // Track strict phase continuity to ensure smooth
-             transitions
-                    //  droplets[ i]. current_phase += (2.0 * PI * current_freq)
-             /
-                    //  SAMPLE_RATE;
-                    droplets[i].current_phase += 2.0 * PI * current_freq * dt;
-                    if (droplets[i].current_phase > 2.0 * PI) {
-                      droplets[i].current_phase =
-                          fmod(droplets[i].current_phase, 2.0 * PI);
-                    } */
+         
 
           // Compute single mono raw sample contribution
           //    double sample_mono = sin(droplets[i].current_phase) * envelope *
@@ -696,17 +751,21 @@ int main() {
       amplified_R = (int32_t)lpf_state_r;
       // ==========================================
 
-      float constant_background_roar =
-          (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
-
-      // 5. Output clean raw interleaved binary streams to standard out
-      //  int16_t out_sample;
-      //    float constant_background_roar =
-      //     (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
+      // float background_roar_l = generate_pink_noise(&pink_left) * 0.04f; //
+      // 4% mix level float background_roar_r = generate_pink_noise(&pink_right)
+      // * 0.04f;
+      //  5. Output clean raw interleaved binary streams to standard out
+      //   int16_t out_sample;
+      //     float constant_background_roar =
+      //      (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
+      // Replace lines 699 - 709 with this line:
+      float background_roar =
+          generate_pink_noise() *
+          0.12f; // Increased to 12% for a richer, deeper background water roar
 
       // Apply a rough bandpass filter to mask the noise or damp it heavily
-      constant_background_roar *=
-          0.03f; // Keep it low (3% volume) to act as a glue layer
+      //  constant_background_roar *=
+      0.03f; // Keep it low (3% volume) to act as a glue layer
 
       if (sample_counter++ >= 64) {
         cached_hydro_sample = step_sph_hydro_sample(150.0f); // Run SPH step
@@ -762,11 +821,18 @@ int main() {
       // -----------------------------------------------------------------
 
       buffer[f * 2] =
-          (int16_t)(((amplified_L + constant_background_roar + hydro_sample)));
+          (int16_t)(((amplified_L + hydro_sample)));
       buffer[f * 2 + 1] =
-          (int16_t)(((amplified_R + constant_background_roar + hydro_sample)));
+          (int16_t)(((amplified_R + hydro_sample)));
     }
     //   safe_volume_boost_alsa(buffer, BUFFER_FRAMES, 1.0f);
+    // Locate line ~769 in your main loop right before snd_pcm_writei:
+    // A smoothing_radius of 3.0f to 5.0f smooths out bubble popping textures
+    // nicely.
+    smooth_bubbles_sph(buffer, BUFFER_FRAMES, 5.0f);
+
+    // snd_pcm_writei(pcm_handle, buffer, BUFFER_FRAMES);
+
     snd_pcm_sframes_t written =
         snd_pcm_writei(pcm_handle, buffer, BUFFER_FRAMES);
     if (written < 0) {
