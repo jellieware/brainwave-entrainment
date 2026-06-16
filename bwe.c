@@ -726,7 +726,7 @@ int main() {
   }
 
   int16_t buffer[BUFFER_FRAMES * 2];
-  double speed_modifier = 1.0; // 1.0 is normal, 0.5 is half speed (slower)
+  double speed_modifier = 0.7; // 1.0 is normal, 0.5 is half speed (slower)
   double dt = (1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ) * speed_modifier;
 
   // double dt = 1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ;
@@ -737,12 +737,11 @@ int main() {
     for (int f = 0; f < BUFFER_FRAMES; f++) {
       double cluster_jitter = 1.0 + 0.8 * sin(total_elapsed_time * 7.3) *
                                         cos(total_elapsed_time * 19.1);
-      double cluster_jitter_soft = 1.0 + 0.8 * sin(total_elapsed_time * 5.3) *
-                                        cos(total_elapsed_time * 10.1);
-      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter)) {
+      
+      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier)) {
         trigger_droplet();
       }
-      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter_soft)) {
+      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter)) {
         trigger_vandoel_medium_bubble();
       }
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
