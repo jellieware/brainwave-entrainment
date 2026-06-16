@@ -574,7 +574,7 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   const float ocean_wash_blend =
       0.20f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
-      5.75f; // Raised from 1.75f to allow for louder individual splash peaks
+      4.75f; // Raised from 1.75f to allow for louder individual splash peaks
 
   // Extra headroom to kill remaining line static
 
@@ -678,7 +678,7 @@ int main() {
   }
 
   int16_t buffer[BUFFER_FRAMES * 2];
-  double speed_modifier = 1.0; // 1.0 is normal, 0.5 is half speed (slower)
+  double speed_modifier = 0.7; // 1.0 is normal, 0.5 is half speed (slower)
   double dt = (1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ) * speed_modifier;
 
   // double dt = 1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ;
