@@ -347,7 +347,7 @@ float macro_flow_surge = 1.0f;
 #define SAMPLE_RATE 44100
 #define PI 3.14159265358979323846
 #define PCM_DEVICE "default"
-#define BUFFER_FRAMES 8192
+#define BUFFER_FRAMES 16384
 #define NUM_DROPLETS 300          // Targeted dense overlap array pool size
 #define REVERB_DELAY_SAMPLES 6000 // Echo size buffer (~136ms)
 float reverb_buffer_l[REVERB_DELAY_SAMPLES] = {0.0f};
@@ -366,8 +366,8 @@ const float wet_mix = 0.45f; // Volume of
 // double DROPLET_SIZE_MAX = 0.0450;
 const double MASTER_VOLUME = 80; // Safe pre-gain ceiling multiplier
 double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.0550; // Significantly larger min bubble volume
-double DROPLET_SIZE_MAX = 0.0850; // Massive max radius for deep throat gurgles
+double DROPLET_SIZE_MIN = 0.0150; // Significantly larger min bubble volume
+double DROPLET_SIZE_MAX = 0.0550; // Massive max radius for deep throat gurgles
 
 typedef struct {
   int active;
@@ -622,7 +622,7 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   const float ocean_wash_blend =
       0.15f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
-      5.75f; // Raised from 1.75f to allow for louder individual splash peaks
+      5.0f; // Raised from 1.75f to allow for louder individual splash peaks
 
   // Extra headroom to kill remaining line static
 
@@ -726,7 +726,7 @@ int main() {
   }
 
   int16_t buffer[BUFFER_FRAMES * 2];
-  double speed_modifier = 0.7; // 1.0 is normal, 0.5 is half speed (slower)
+  double speed_modifier = 1.0; // 1.0 is normal, 0.5 is half speed (slower)
   double dt = (1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ) * speed_modifier;
 
   // double dt = 1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ;
@@ -737,10 +737,12 @@ int main() {
     for (int f = 0; f < BUFFER_FRAMES; f++) {
       double cluster_jitter = 1.0 + 0.8 * sin(total_elapsed_time * 7.3) *
                                         cos(total_elapsed_time * 19.1);
+      double cluster_jitter_soft = 1.0 + 0.8 * sin(total_elapsed_time * 5.3) *
+                                        cos(total_elapsed_time * 10.1);
       if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter)) {
         trigger_droplet();
       }
-      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier)) {
+      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter_soft)) {
         trigger_vandoel_medium_bubble();
       }
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
