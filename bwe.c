@@ -268,7 +268,7 @@ float hp_prev_out_r = 0.0f;
 // 0.985f sets a tight low-cut roughly around 120Hz-150Hz.
 // This completely carves out the deep sub-bass mud without losing clarity.
 // float hp_alpha = 0.982f;
-float hp_alpha = 0.940f; // Drop from 0.982f to let deep sub-bass gargles pass
+float hp_alpha = 0.920f; // Drop from 0.982f to let deep sub-bass gargles pass 820
                          // through cleanly
 
 // --------------------------------------------------------
@@ -279,7 +279,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.1f;
+float fluid_smudge_factor = 0.04f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -348,7 +348,7 @@ float macro_flow_surge = 1.0f;
 #define PI 3.14159265358979323846
 #define PCM_DEVICE "default"
 #define BUFFER_FRAMES 16384
-#define NUM_DROPLETS 300          // Targeted dense overlap array pool size
+#define NUM_DROPLETS 500       // Targeted dense overlap array pool size
 #define REVERB_DELAY_SAMPLES 6000 // Echo size buffer (~136ms)
 float reverb_buffer_l[REVERB_DELAY_SAMPLES] = {0.0f};
 float reverb_buffer_r[REVERB_DELAY_SAMPLES] = {0.0f};
@@ -366,8 +366,8 @@ const float wet_mix = 0.45f; // Volume of
 // double DROPLET_SIZE_MAX = 0.0450;
 const double MASTER_VOLUME = 80; // Safe pre-gain ceiling multiplier
 double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.0250; // Significantly larger min bubble volume
-double DROPLET_SIZE_MAX = 0.0650; // Massive max radius for deep throat gurgles
+double DROPLET_SIZE_MIN = 0.0250; // Force minimum bubble radius to 25mm
+double DROPLET_SIZE_MAX = 0.0850; // Massive 85mm radius for deep hollow pockets
 
 typedef struct {
   int active;
@@ -423,7 +423,7 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(50, 150.0) * size_factor + micro_drift;
+          rand_double(50.0, 150.0) * size_factor + micro_drift;
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
@@ -620,7 +620,7 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   //   1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
   // Change lines 477-480
   const float ocean_wash_blend =
-      0.20f; // Raised from 0.30f to simulate water rushing over rocks
+      0.25f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
       5.0f; // Raised from 1.75f to allow for louder individual splash peaks
 
@@ -818,10 +818,10 @@ int main() {
       if (rand_double(0.0, 100.0) < (1.0 * speed_modifier + cluster_jitter)) {
         trigger_droplet();
       }
-      // if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter))
-      // {
-      //    trigger_vandoel_medium_bubble();
-      //  }
+   //  if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter))
+  //     {
+    //  trigger_vandoel_medium_bubble();
+    //   }
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
       // saturated
       // if (rand_double (0.0, 100.0) < 1.5)
@@ -1226,8 +1226,8 @@ int main() {
     // Locate line ~769 in your main loop right before snd_pcm_writei:
     // A smoothing_radius of 3.0f to 5.0f smooths out bubble popping textures
     // nicely.
-    smooth_bubbles_sph(buffer, BUFFER_FRAMES, 5.0f);
-    blur_bubbles_engine(buffer, BUFFER_FRAMES);
+      smooth_bubbles_sph(buffer, BUFFER_FRAMES, 8.5f);
+      blur_bubbles_engine(buffer, BUFFER_FRAMES);
     // snd_pcm_writei(pcm_handle, buffer, BUFFER_FRAMES);
 
     // smooth_bubbles_sph(buffer, BUFFER_FRAMES, 5.0f);
