@@ -5,9 +5,6 @@
 Audio Preview:
 <br><br>
 
-[preview.wav](https://github.com/user-attachments/files/29017128/preview.wav)
-
-
 
 
 <br><br>
