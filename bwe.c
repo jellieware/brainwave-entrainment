@@ -347,7 +347,7 @@ float macro_flow_surge = 1.0f;
 #define SAMPLE_RATE 44100
 #define PI 3.14159265358979323846
 #define PCM_DEVICE "default"
-#define BUFFER_FRAMES 4096
+#define BUFFER_FRAMES 8192
 #define NUM_DROPLETS 300          // Targeted dense overlap array pool size
 #define REVERB_DELAY_SAMPLES 6000 // Echo size buffer (~136ms)
 float reverb_buffer_l[REVERB_DELAY_SAMPLES] = {0.0f};
@@ -366,7 +366,7 @@ const float wet_mix = 0.45f; // Volume of
 // double DROPLET_SIZE_MAX = 0.0450;
 const double MASTER_VOLUME = 80; // Safe pre-gain ceiling multiplier
 double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.0150; // Significantly larger min bubble volume
+double DROPLET_SIZE_MIN = 0.0550; // Significantly larger min bubble volume
 double DROPLET_SIZE_MAX = 0.0850; // Massive max radius for deep throat gurgles
 
 typedef struct {
@@ -436,6 +436,54 @@ void trigger_droplet() {
     }
   }
 }
+#define M_PI 3.14159265358979323846
+
+void trigger_vandoel_medium_bubble() {
+  for (int i = 0; i < NUM_DROPLETS; i++) {
+    if (!droplets[i].active) {
+      // 1. CHOOSE A "MEDIUM" RADIUS (in meters)
+      // Medium bubbles are roughly 6mm to 9mm in diameter (0.003m to 0.0045m
+      // radius)
+      double radius = rand_double(0.003, 0.0045);
+
+      // 2. VAN DEN DOEL / MINNAERT FREQUENCY CALCULATION
+      // Standard Minnaert approximation: f = 3.0 / radius
+      double minnaert_freq = 3.0 / radius;
+      droplets[i].sweep_start = minnaert_freq;
+
+      // 3. PITCH CHIRP (Slightly rising frequency as it breaks free)
+      // Van den Doel uses a slope parameter (epsilon) between 4.0 and 8.0
+      droplets[i].pitch_slur = rand_double(4.0, 6.0);
+
+      // 4. VAN DEN DOEL DAMPING FACTOR
+      // Damping combines thermal/viscous loss (0.013/r) and radiation loss
+      // (0.022 * f)
+      double vandoel_damping = (0.013 / radius) + (0.022 * minnaert_freq);
+
+      // For a "SOFT" sound, we slightly scale up the damping to make it more
+      // muffled
+      droplets[i].damping_factor = vandoel_damping * 1.3;
+
+      // 5. LIFESPAN & AMPLITUDE
+      // Medium bubbles decay completely within 100ms to 180ms
+      droplets[i].duration = rand_double(0.10, 0.18);
+      droplets[i].amplitude =
+          rand_double(0.15, 0.30) * (1.0 / (double)NUM_DROPLETS);
+
+      // 6. INITIALIZE STATE & STEREO PAN
+      droplets[i].active = 1;
+      droplets[i].current_phase = 0.0;
+      droplets[i].age = 0.0;
+
+      double pan = rand_double(0.1, 0.9);
+      droplets[i].pan_left = sqrt(1.0 - pan);
+      droplets[i].pan_right = sqrt(pan);
+
+      break;
+    }
+  }
+}
+
 // Low-Pass Filter State (one for each stereo channel)
 float lpf_state_l = 0.0f;
 float lpf_state_r = 0.0f;
@@ -572,9 +620,9 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   //   1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
   // Change lines 477-480
   const float ocean_wash_blend =
-      0.20f; // Raised from 0.30f to simulate water rushing over rocks
+      0.15f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
-      4.75f; // Raised from 1.75f to allow for louder individual splash peaks
+      5.75f; // Raised from 1.75f to allow for louder individual splash peaks
 
   // Extra headroom to kill remaining line static
 
@@ -689,8 +737,11 @@ int main() {
     for (int f = 0; f < BUFFER_FRAMES; f++) {
       double cluster_jitter = 1.0 + 0.8 * sin(total_elapsed_time * 7.3) *
                                         cos(total_elapsed_time * 19.1);
-      if (rand_double(0.0, 100.0) < (1.5 * speed_modifier * cluster_jitter)) {
+      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter)) {
         trigger_droplet();
+      }
+      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier)) {
+        trigger_vandoel_medium_bubble();
       }
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
       // saturated
