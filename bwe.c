@@ -6,6 +6,90 @@
 #include <time.h>
 #define SPH_WINDOW_SIZE 5
 #define PINK_MAX_ROWS 12
+#define BROOK_POLYPHONY 16
+
+typedef struct {
+  float age;
+  float duration;
+  float base_freq;
+  float amp_envelope;
+  int active;
+} BrookVoice;
+
+static BrookVoice g_brook_pool[BROOK_POLYPHONY];
+
+void process_van_den_doel_brook(float *out_left_channel,
+                                float *out_right_channel) {
+  const float dt_sample = 1.0f / 44100.0f;
+  float accum_L = 0.0f;
+  float accum_R = 0.0f;
+
+  // 1. Independent Spawning Grid Matrix
+  // A tight threshold limits the frequency of tiny splash occurrences
+  if (((float)rand() / (float)RAND_MAX) < 0.015f) {
+    for (int v = 0; v < BROOK_POLYPHONY; v++) {
+      if (!g_brook_pool[v].active) {
+        g_brook_pool[v].active = 1;
+        g_brook_pool[v].age = 0.0f;
+
+        // Short lifetime (40ms to 90ms) ensures a crisp, clicking snap
+        g_brook_pool[v].duration =
+            0.04f + ((float)rand() / (float)RAND_MAX) * 0.05f;
+
+        // Higher pitches (350Hz - 1200Hz) represent small, hollow water
+        // cavities
+        g_brook_pool[v].base_freq =
+            350.0f + ((float)rand() / (float)RAND_MAX) * 850.0f;
+
+        // Low amplitude allocation blends it softly beneath the heavy mix
+        g_brook_pool[v].amp_envelope =
+            0.05f + ((float)rand() / (float)RAND_MAX) * 0.08f;
+        break;
+      }
+    }
+  }
+
+  // 2. Van Den Doel Synthesis Engine (Explicitly matching lines 648-705)
+  for (int v = 0; v < BROOK_POLYPHONY; v++) {
+    if (g_brook_pool[v].active) {
+      float progress = g_brook_pool[v].age / g_brook_pool[v].duration;
+
+      // Core physical parameter: A delicate upward frequency rise (2% to 15%)
+      float dynamic_freq =
+          g_brook_pool[v].base_freq * (1.0f + 0.12f * progress);
+
+      // Sine window multiplied by a sharp exponential dampening factor (-35.0f)
+      float envelope_window =
+          sinf(3.14159265f * progress) * expf(-35.0f * progress);
+
+      // Calculate raw oscillator sound wave value
+      float sample_mono =
+          sinf(g_brook_pool[v].age * (2.0f * 3.14159265f * dynamic_freq)) *
+          (g_brook_pool[v].amp_envelope * envelope_window);
+
+      // Spatial stereo splitting via panning assignment
+      if (v % 2 == 0) {
+        accum_L += sample_mono * 0.75f;
+        accum_R += sample_mono * 0.35f;
+      } else {
+        accum_L += sample_mono * 0.35f;
+        accum_R += sample_mono * 0.75f;
+      }
+
+      // Progress the internal clock using single-sample increments
+      g_brook_pool[v].age += dt_sample;
+
+      // Terminate voice execution safely once lifecycle ends
+      if (progress >= 1.0f) {
+        g_brook_pool[v].active = 0;
+      }
+    }
+  }
+
+  // Export variables out to your master summing pipeline
+  *out_left_channel = accum_L;
+  *out_right_channel = accum_R;
+}
 
 typedef struct {
   int rows[PINK_MAX_ROWS];
@@ -195,7 +279,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.008f;
+float fluid_smudge_factor = 0.04f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -276,10 +360,15 @@ const float dry_mix = 0.65f; // Volume of original untouched audio
 const float wet_mix = 0.45f; // Volume of
 
 // Global Master Loudness Control (0.0 to 1.0)
-const double MASTER_VOLUME = 80;
+// const double MASTER_VOLUME = 80;
+// double BUBBLE_RATE_HZ = 1.0;
+// double DROPLET_SIZE_MIN = 0.0050;
+// double DROPLET_SIZE_MAX = 0.0450;
+const double MASTER_VOLUME = 80; // Safe pre-gain ceiling multiplier
 double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.0050;
-double DROPLET_SIZE_MAX = 0.0450;
+double DROPLET_SIZE_MIN = 0.0150; // Significantly larger min bubble volume
+double DROPLET_SIZE_MAX = 0.0850; // Massive max radius for deep throat gurgles
+
 typedef struct {
   int active;
   double current_phase;
@@ -334,7 +423,7 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(350, 450.0) * size_factor + micro_drift;
+          rand_double(50, 150.0) * size_factor + micro_drift;
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
@@ -483,9 +572,9 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   //   1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
   // Change lines 477-480
   const float ocean_wash_blend =
-      0.25f; // Raised from 0.30f to simulate water rushing over rocks
+      0.30f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
-      2.75f; // Raised from 1.75f to allow for louder individual splash peaks
+      6.75f; // Raised from 1.75f to allow for louder individual splash peaks
 
   // Extra headroom to kill remaining line static
 
@@ -790,6 +879,22 @@ int main() {
       // Replace your old single mixed output with these two split channels:
       double mixed_left = carrier_left;
       double mixed_right = carrier_right;
+      // --- Inside your f-frame generation loop (around line 784) ---
+      // double mixed_left = carrier_left;
+      // double mixed_right = carrier_right;
+
+      // 1. Process your existing heavy/large gargling bubble array here
+      // ... (Your loop that adds droplet code to mixed_left and mixed_right)
+      // ...
+
+      // 2. Call the soft brook engine to get the separate float channel outputs
+      float brook_splash_L = 0.0f;
+      float brook_splash_R = 0.0f;
+      process_van_den_doel_brook(&brook_splash_L, &brook_splash_R);
+
+      // 3. Accumulate them directly onto the master stereo mixing bus
+      mixed_left += (double)brook_splash_L;
+      mixed_right += (double)brook_splash_R;
 
       //   double mixed_left = 0.0;
       //  double mixed_right = 0.0;
