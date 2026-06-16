@@ -183,7 +183,10 @@ float hp_prev_out_r = 0.0f;
 // The filter coefficient:
 // 0.985f sets a tight low-cut roughly around 120Hz-150Hz.
 // This completely carves out the deep sub-bass mud without losing clarity.
-float hp_alpha = 0.982f;
+// float hp_alpha = 0.982f;
+float hp_alpha = 0.940f; // Drop from 0.982f to let deep sub-bass gargles pass
+                         // through cleanly
+
 // --------------------------------------------------------
 
 // --- FLUID LIQUID INTEGRATORS (DIRECT AUDIO DAMPENING) ---
@@ -192,7 +195,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.05f;
+float fluid_smudge_factor = 0.008f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -228,7 +231,7 @@ double binaural_volume = 0.05;    // Mix level (0.05 = 5%). Keep it low to blend
 // Gain & Mix Control (Boosts volume without clipping)
 #define PI 3.14159265358979323846
 #define GRID_SIZE 64
-#define MAX_POLYPHONY 8
+#define MAX_POLYPHONY 16
 #define SLOW_LFO_SPEED 0.0012f
 
 // Gain & Headroom Weights
@@ -268,15 +271,15 @@ float reverb_buffer_r[REVERB_DELAY_SAMPLES] = {0.0f};
 int reverb_idx = 0;
 
 // Acoustic space adjusters
-const float feedback = 0.001f; // Decay size (0.1 = tiny room, 0.92 = huge cave)
-const float dry_mix = 0.65f;   // Volume of original untouched audio
-const float wet_mix = 0.45f;   // Volume of
+const float feedback = 0.1f; // Decay size (0.1 = tiny room, 0.92 = huge cave)
+const float dry_mix = 0.65f; // Volume of original untouched audio
+const float wet_mix = 0.45f; // Volume of
 
 // Global Master Loudness Control (0.0 to 1.0)
 const double MASTER_VOLUME = 80;
 double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.00005;
-double DROPLET_SIZE_MAX = 0.0025;
+double DROPLET_SIZE_MIN = 0.0050;
+double DROPLET_SIZE_MAX = 0.0450;
 typedef struct {
   int active;
   double current_phase;
@@ -331,7 +334,7 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(50, 600.0) * size_factor + micro_drift;
+          rand_double(350, 450.0) * size_factor + micro_drift;
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
@@ -474,10 +477,15 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   }
 
   // --- TUNING A REALISTIC BROOK CHOP ---
+  // const float ocean_wash_blend =
+  //  0.30f; // Lowered (was 0.55f) to bring out bubble sharpness
+  //  const float stream_gain_limit =
+  //   1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
+  // Change lines 477-480
   const float ocean_wash_blend =
-      0.30f; // Lowered (was 0.55f) to bring out bubble sharpness
+      0.25f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
-      1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
+      2.75f; // Raised from 1.75f to allow for louder individual splash peaks
 
   // Extra headroom to kill remaining line static
 
@@ -486,6 +494,12 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   // like a tiny stream or a wider river bed.
   const float b0 = 0.046f, b1 = 0.0f, b2 = -0.046f;
   const float a1 = -1.890f, a2 = 0.907f;
+  // Change lines 487-488
+  // const float b0 = 0.082f, b1 = 0.0f, b2 = -0.082f;
+  // const float a1 = -1.715f, a2 = 0.836f;
+  // Change lines 487-488
+  // const float b0 = 0.065f, b1 = 0.0f, b2 = -0.065f;
+  // const float a1 = -1.482f, a2 = 0.870f;
 
   for (int f = 0; f < frames; f++) {
     float left_in = (float)buffer[f * 2];
@@ -619,8 +633,13 @@ int main() {
 
       // ASSIGN MODIFIER: Sets the global variable to manage large, heavy bubble
       // spawning
+      //  current_grid_density =
+      //   0.00008f + ((float)cell_x / (float)GRID_SIZE) * 0.00018f;
+      // Change lines 622-623 to a lighter processing sweet spot:
+      // current_grid_density = 0.0015f + ((float)cell_x / (float)GRID_SIZE) *
+      // 0.0035f;
       current_grid_density =
-          0.00008f + ((float)cell_x / (float)GRID_SIZE) * 0.00018f;
+          0.0020f + ((float)cell_x / (float)GRID_SIZE) * 0.0040f;
 
       // ============================================================================
       // POLYPHONIC MATRIX SOUND GENERATION ENGINE
@@ -664,74 +683,74 @@ int main() {
       // }
       //  if (random_roll_R < current_grid_density) {
       // === VAN DEN DOEL MATRIX OSCILLATOR (Lines 364-400) ===
-      for (int v = 0; v < MAX_POLYPHONY; v++) {
-        if (drops_L[v].active || drops_R[v].active) {
-          // Update age based on sample steps
-          if (drops_L[v].active)
-            drops_L[v].age += 1.0f;
-          if (drops_R[v].active)
-            drops_R[v].age += 1.0f;
+      /*    for (int v = 0; v < MAX_POLYPHONY; v++) {
+            if (drops_L[v].active || drops_R[v].active) {
+              // Update age based on sample steps
+              if (drops_L[v].active)
+                drops_L[v].age += 1.0f;
+              if (drops_R[v].active)
+                drops_R[v].age += 1.0f;
 
-          // Physics-based parameters: 15% freq rise, exponential decay
-          float progressL = drops_L[v].age / drops_L[v].duration;
-          float progressR = drops_R[v].age / drops_R[v].duration;
+              // Physics-based parameters: 15% freq rise, exponential decay
+              float progressL = drops_L[v].age / drops_L[v].duration;
+              float progressR = drops_R[v].age / drops_R[v].duration;
 
-          // ... (Applied to freq and amp for L/R)
+              // ... (Applied to freq and amp for L/R)
 
-          // Final synthesis
+              // Final synthesis
 
-          // New Right Channel
-          float target_freq_R =
-              drops_R[v].base_freq * (1.0f + 0.02f * progressR);
-          float envelope_window_R =
-              sinf(3.14159265f * progressR) * expf(-35.0f * progressR);
-          scholastic_water_R +=
-              sinf(drops_R[v].age *
-                   (2.0f * 3.14159265f * target_freq_R / 44100.0f)) *
-              (drops_R[v].amp_envelope * envelope_window_R);
-        }
-      }
-      // Sum overlapping polyphonic voices smoothly
-      // float scholastic_water_L = 0.0f;
-      //  float scholastic_water_R = 0.0f;
+              // New Right Channel
+              float target_freq_R =
+                  drops_R[v].base_freq * (1.0f + 0.02f * progressR);
+              float envelope_window_R =
+                  sinf(3.14159265f * progressR) * expf(-35.0f * progressR);
+              scholastic_water_R +=
+                  sinf(drops_R[v].age *
+                       (2.0f * 3.14159265f * target_freq_R / 44100.0f)) *
+                  (drops_R[v].amp_envelope * envelope_window_R);
+            }
+          }
+          // Sum overlapping polyphonic voices smoothly
+          // float scholastic_water_L = 0.0f;
+          //  float scholastic_water_R = 0.0f;
 
-      for (int v = 0; v < MAX_POLYPHONY; v++) {
-        if (drops_L[v].active) {
-          drops_L[v].age += 1.0f;
-          float progress = drops_L[v].age / drops_L[v].duration;
+          for (int v = 0; v < MAX_POLYPHONY; v++) {
+            if (drops_L[v].active) {
+              drops_L[v].age += 1.0f;
+              float progress = drops_L[v].age / drops_L[v].duration;
 
-          float window = sinf(3.14159265f * progress) * (1.0f - progress);
-          float local_amp = drops_L[v].amp_envelope * window;
+              float window = sinf(3.14159265f * progress) * (1.0f - progress);
+              float local_amp = drops_L[v].amp_envelope * window;
 
-          float dynamic_freq =
-              drops_L[v].base_freq * (1.0f + (progress * progress * 0.4f));
-          scholastic_water_L +=
-              sinf(drops_L[v].age *
-                   (2.0f * 3.14159265f * dynamic_freq / 44100.0f)) *
-              local_amp;
+              float dynamic_freq =
+                  drops_L[v].base_freq * (1.0f + (progress * progress * 0.4f));
+              scholastic_water_L +=
+                  sinf(drops_L[v].age *
+                       (2.0f * 3.14159265f * dynamic_freq / 44100.0f)) *
+                  local_amp;
 
-          if (drops_L[v].age >= drops_L[v].duration)
-            drops_L[v].active = 0;
-        }
+              if (drops_L[v].age >= drops_L[v].duration)
+                drops_L[v].active = 0;
+            }
 
-        if (drops_R[v].active) {
-          drops_R[v].age += 1.0f;
-          float progress = drops_R[v].age / drops_R[v].duration;
+            if (drops_R[v].active) {
+              drops_R[v].age += 1.0f;
+              float progress = drops_R[v].age / drops_R[v].duration;
 
-          float window = sinf(3.14159265f * progress) * (1.0f - progress);
-          float local_amp = drops_R[v].amp_envelope * window;
+              float window = sinf(3.14159265f * progress) * (1.0f - progress);
+              float local_amp = drops_R[v].amp_envelope * window;
 
-          float dynamic_freq =
-              drops_R[v].base_freq * (1.0f + (progress * progress * 1.6f));
-          scholastic_water_R +=
-              sinf(drops_R[v].age *
-                   (2.0f * 3.14159265f * dynamic_freq / 44100.0f)) *
-              local_amp;
+              float dynamic_freq =
+                  drops_R[v].base_freq * (1.0f + (progress * progress * 1.6f));
+              scholastic_water_R +=
+                  sinf(drops_R[v].age *
+                       (2.0f * 3.14159265f * dynamic_freq / 44100.0f)) *
+                  local_amp;
 
-          if (drops_R[v].age >= drops_R[v].duration)
-            drops_R[v].active = 0;
-        }
-      }
+              if (drops_R[v].age >= drops_R[v].duration)
+                drops_R[v].active = 0;
+            }
+          }*/
 
       // 3. Mix channels together inside a safe 32-bit workspace with Master
       // Gain applied
@@ -899,7 +918,7 @@ int main() {
       // Replace lines 699 - 709 with this line:
       float background_roar =
           generate_pink_noise() *
-          0.12f; // Increased to 12% for a richer, deeper background water roar
+          5.0f; // Increased to 12% for a richer, deeper background water roar
 
       // Apply a rough bandpass filter to mask the noise or damp it heavily
       //  constant_background_roar *=
