@@ -279,7 +279,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.04f;
+float fluid_smudge_factor = 0.1f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -366,8 +366,8 @@ const float wet_mix = 0.45f; // Volume of
 // double DROPLET_SIZE_MAX = 0.0450;
 const double MASTER_VOLUME = 80; // Safe pre-gain ceiling multiplier
 double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.0150; // Significantly larger min bubble volume
-double DROPLET_SIZE_MAX = 0.0550; // Massive max radius for deep throat gurgles
+double DROPLET_SIZE_MIN = 0.0250; // Significantly larger min bubble volume
+double DROPLET_SIZE_MAX = 0.0650; // Massive max radius for deep throat gurgles
 
 typedef struct {
   int active;
@@ -620,7 +620,7 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   //   1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
   // Change lines 477-480
   const float ocean_wash_blend =
-      0.15f; // Raised from 0.30f to simulate water rushing over rocks
+      0.20f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
       5.0f; // Raised from 1.75f to allow for louder individual splash peaks
 
@@ -688,6 +688,83 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
     buffer[f * 2 + 1] = (int16_t)out_r;
   }
 }
+/**
+ * Standalone Acoustic Flowing Liquid Engine using Minnaert's Formula.
+ * Iterates through the active droplet voice array pool, calculates physical
+ * fluid resonances, and sums the results directly into your stereo bus.
+ */
+void process_minnaert_flow_engine(Droplet *pool, int pool_size, double dt,
+                                  double *mixed_left, double *mixed_right) {
+  // Physical acoustics constants for fluid simulation
+  const double gamma = 1.4;   // Polytropic expansion coefficient for air
+  const double P0 = 101325.0; // Hydrostatic atmospheric pressure (Pascals)
+  const double rho = 1000.0;  // Mass density of pure water (kg/m^3)
+
+  // Core Minnaert constant multiplier factor: sqrt(3 * gamma * P0 / rho) / (2 *
+  // PI) Pre-calculated to optimize CPU execution cycles inside your frames loop
+  const double minnaert_constant =
+      0.15915494309 * sqrt((3.0 * gamma * P0) / rho);
+
+  for (int i = 0; i < pool_size; i++) {
+    if (!pool[i].active)
+      continue;
+
+    // Failsafe boundary check to clean out decayed liquid nodes safely
+    if (pool[i].age >= pool[i].duration) {
+      pool[i].active = 0;
+      continue;
+    }
+
+    double progress = pool[i].age / pool[i].duration;
+
+    // 1. DYNAMIC MINNAERT RADIUS ADJUSTMENT
+    // map your `sweep_start` variable to represent the INITIAL BUBBLE RADIUS in
+    // meters. As a bubble travels through fluid currents, turbulence shrinks
+    // it.
+    double current_radius = pool[i].sweep_start * (1.0 - 0.45 * progress);
+    if (current_radius <= 0.0001) {
+      pool[i].active = 0;
+      continue;
+    }
+
+    // 2. THE PHYSICAL MINNAERT FORMULA
+    // f = (1 / (2 * PI * R)) * sqrt((3 * gamma * P0) / rho)
+    double minnaert_frequency = minnaert_constant / current_radius;
+
+    // 3. TURBULENT MICRO-EDDIES (JITTER CORRECTION)
+    // Introduces minute phase disruptions mimicking turbulent friction
+    double chaotic_jitter =
+        1.0 + (0.012 * sin(2.0 * M_PI * 350.0 * pool[i].age));
+    double final_target_freq = minnaert_frequency * chaotic_jitter;
+
+    // 4. DOUBLE-EXPONENTIAL PHYSICAL DAMPING
+    // Combines sharp impact shock parameters with slower internal thermal
+    // dissipation
+    double damp_fast = exp(-140.0 * pool[i].age);
+    double damp_slow = exp(-28.0 * pool[i].age);
+    double composite_envelope = pool[i].amplitude *
+                                ((0.75 * damp_fast) + (0.25 * damp_slow)) *
+                                sin(M_PI * progress);
+
+    // 5. PHASE ACCUMULATION
+    pool[i].current_phase += (2.0 * M_PI * final_target_freq) * dt;
+    if (pool[i].current_phase > 2.0 * M_PI) {
+      pool[i].current_phase = fmod(pool[i].current_phase, 2.0 * M_PI);
+    }
+
+    // 6. SYNTHESIZE MONO SOUND PRESSURE VALUE
+    double sample_mono = composite_envelope * sin(pool[i].current_phase);
+
+    // 7. ROUTE INTO WIDE STEREO AUDIO BUS
+    // Incorporates your equal-power spatial panning vectors into your master
+    // channels
+    *mixed_left += sample_mono * pool[i].pan_left * MASTER_VOLUME;
+    *mixed_right += sample_mono * pool[i].pan_right * MASTER_VOLUME;
+
+    // Advance individual timeline clocks using step parameters
+    pool[i].age += dt;
+  }
+}
 
 int main() {
   srand((unsigned int)time(NULL));
@@ -737,13 +814,14 @@ int main() {
     for (int f = 0; f < BUFFER_FRAMES; f++) {
       double cluster_jitter = 1.0 + 0.8 * sin(total_elapsed_time * 7.3) *
                                         cos(total_elapsed_time * 19.1);
-      
-      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier)) {
+
+      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier + cluster_jitter)) {
         trigger_droplet();
       }
-      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter)) {
-        trigger_vandoel_medium_bubble();
-      }
+      // if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter))
+      // {
+      //    trigger_vandoel_medium_bubble();
+      //  }
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
       // saturated
       // if (rand_double (0.0, 100.0) < 1.5)
@@ -1054,6 +1132,11 @@ int main() {
       // 1. Advance our master timeline clock single-sample by single-sample
 
       // 1. Progress the master timeline clock sample-by-sample
+      // Locate line ~954 inside the main execution while loop:
+      // Remove the old inline droplet loop and substitute this single engine
+      // execution:
+      process_minnaert_flow_engine(droplets, NUM_DROPLETS, dt, &mixed_left,
+                                   &mixed_right);
 
       lpf_state_l =
           lpf_state_l + LPF_ALPHA * ((float)amplified_L - lpf_state_l);
