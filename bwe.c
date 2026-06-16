@@ -347,7 +347,7 @@ float macro_flow_surge = 1.0f;
 #define SAMPLE_RATE 44100
 #define PI 3.14159265358979323846
 #define PCM_DEVICE "default"
-#define BUFFER_FRAMES 2048
+#define BUFFER_FRAMES 4096
 #define NUM_DROPLETS 300          // Targeted dense overlap array pool size
 #define REVERB_DELAY_SAMPLES 6000 // Echo size buffer (~136ms)
 float reverb_buffer_l[REVERB_DELAY_SAMPLES] = {0.0f};
@@ -572,9 +572,9 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   //   1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
   // Change lines 477-480
   const float ocean_wash_blend =
-      0.30f; // Raised from 0.30f to simulate water rushing over rocks
+      0.20f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
-      6.75f; // Raised from 1.75f to allow for louder individual splash peaks
+      5.75f; // Raised from 1.75f to allow for louder individual splash peaks
 
   // Extra headroom to kill remaining line static
 
