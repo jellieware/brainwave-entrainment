@@ -7,6 +7,18 @@
 #define SPH_WINDOW_SIZE 5
 #define PINK_MAX_ROWS 12
 #define BROOK_POLYPHONY 16
+// --- CAVITY RADIUS FEEDBACK MATRIX ---
+static float g_total_cavity_radius_mass =
+    0.0f; // Accumulates active bubble mass
+
+// --- PROBABILITY ARPEGGIATOR CONFIG ---
+#define ARP_STEP_MS 2.0f // Trigger evaluation clock rate (in milliseconds)
+const int ARP_STEP_SAMPLES =
+    (int)(44100.0f * (ARP_STEP_MS / 1000.0f)); // Converts 12ms directly into
+                                               // sample counts (~529 samples)
+float arp_spawn_chance =
+    45.5f;                // 1.5% chance to trigger a bubble every 12ms step
+int arp_sample_timer = 0; // Tracks sample countdown inside the loop
 
 typedef struct {
   float age;
@@ -62,10 +74,15 @@ void process_van_den_doel_brook(float *out_left_channel,
       float envelope_window =
           sinf(3.14159265f * progress) * expf(-35.0f * progress);
 
-      // Calculate raw oscillator sound wave value
+      // Calculate raw oscillator sound wave values
+      float time_left = g_brook_pool[v].duration - g_brook_pool[v].age;
+      float splash_guard = 1.0f;
+      if (time_left < 0.004f) { // 4ms fade-out
+        splash_guard = time_left / 0.004f;
+      }
       float sample_mono =
           sinf(g_brook_pool[v].age * (2.0f * 3.14159265f * dynamic_freq)) *
-          (g_brook_pool[v].amp_envelope * envelope_window);
+          (g_brook_pool[v].amp_envelope * envelope_window * splash_guard);
 
       // Spatial stereo splitting via panning assignment
       if (v % 2 == 0) {
@@ -150,6 +167,7 @@ float sph_cubic_spline_kernel(float distance, float h) {
 }
 
 void smooth_bubbles_sph(int16_t *buffer, int frames, float smoothing_radius) {
+
   int total_samples = frames * 2;
 
   // 1. Process in floating-point space to eliminate intermediate quantization
@@ -268,7 +286,7 @@ float hp_prev_out_r = 0.0f;
 // 0.985f sets a tight low-cut roughly around 120Hz-150Hz.
 // This completely carves out the deep sub-bass mud without losing clarity.
 // float hp_alpha = 0.982f;
-float hp_alpha = 0.920f; // Drop from 0.982f to let deep sub-bass gargles pass 820
+float hp_alpha = 0.940f; // Drop from 0.982f to let deep sub-bass gargles pass
                          // through cleanly
 
 // --------------------------------------------------------
@@ -279,7 +297,7 @@ float fluid_history_r = 0.0f;
 
 // Lower values make the water smoother and more fluid.
 // Higher values let more of the individual bubble details through.
-float fluid_smudge_factor = 0.04f;
+float fluid_smudge_factor = 0.4f;
 // ---------------------------------------------------------
 float out_l;
 float out_r;
@@ -347,8 +365,8 @@ float macro_flow_surge = 1.0f;
 #define SAMPLE_RATE 44100
 #define PI 3.14159265358979323846
 #define PCM_DEVICE "default"
-#define BUFFER_FRAMES 16384
-#define NUM_DROPLETS 500       // Targeted dense overlap array pool size
+#define BUFFER_FRAMES 32768
+#define NUM_DROPLETS 300          // Targeted dense overlap array pool size
 #define REVERB_DELAY_SAMPLES 6000 // Echo size buffer (~136ms)
 float reverb_buffer_l[REVERB_DELAY_SAMPLES] = {0.0f};
 float reverb_buffer_r[REVERB_DELAY_SAMPLES] = {0.0f};
@@ -366,8 +384,8 @@ const float wet_mix = 0.45f; // Volume of
 // double DROPLET_SIZE_MAX = 0.0450;
 const double MASTER_VOLUME = 80; // Safe pre-gain ceiling multiplier
 double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.0250; // Force minimum bubble radius to 25mm
-double DROPLET_SIZE_MAX = 0.0850; // Massive 85mm radius for deep hollow pockets
+double DROPLET_SIZE_MIN = 0.0350; // Significantly larger min bubble volume
+double DROPLET_SIZE_MAX = 0.0550; // Massive max radius for deep throat gurgles
 
 typedef struct {
   int active;
@@ -423,7 +441,7 @@ void trigger_droplet() {
 
       // STRICT USER TARGET: Base pitch initializes between 50Hz and 150Hz
       droplets[i].sweep_start =
-          rand_double(50.0, 150.0) * size_factor + micro_drift;
+          rand_double(50, 150.0) * size_factor + micro_drift;
 
       // Sweep target climbs swiftly away from bass rumble to create clean fluid
       // definition
@@ -491,7 +509,7 @@ float lpf_state_r = 0.0f;
 // Smoothing factor alpha (Value between 0.0 and 1.0)
 // Closer to 0.0 = Lower cutoff frequency (muffled/deeper)
 // Closer to 1.0 = Higher cutoff frequency (sharper/brighter)
-const float LPF_ALPHA = 0.040f;
+const float LPF_ALPHA = 0.40f;
 float step_sph_hydro_sample(float carrier_freq) {
   const float DT =
       1.0f / 44100.0f; // Exact time step for 44.1kHz audio sampling rate
@@ -620,7 +638,7 @@ void blur_bubbles_engine(int16_t *buffer, int frames) {
   //   1.75f; // Boosted (was 0.75f) to elevate the bubble ringing peaks
   // Change lines 477-480
   const float ocean_wash_blend =
-      0.25f; // Raised from 0.30f to simulate water rushing over rocks
+      0.45f; // Raised from 0.30f to simulate water rushing over rocks
   const float stream_gain_limit =
       5.0f; // Raised from 1.75f to allow for louder individual splash peaks
 
@@ -704,16 +722,20 @@ void process_minnaert_flow_engine(Droplet *pool, int pool_size, double dt,
   // PI) Pre-calculated to optimize CPU execution cycles inside your frames loop
   const double minnaert_constant =
       0.15915494309 * sqrt((3.0 * gamma * P0) / rho);
-
+  g_total_cavity_radius_mass = 0.0f; // Reset per frame
   for (int i = 0; i < pool_size; i++) {
     if (!pool[i].active)
       continue;
-
-    // Failsafe boundary check to clean out decayed liquid nodes safely
+    // --- FIX A: DEACTIVATION IS DEFERRED UNTIL THE COLD SAMPLES RAMP DOWN ---
+    // Instead of instantly halting the processing frame, we allow the
+    // generation logic below to naturally output a 0.0 value first.
     if (pool[i].age >= pool[i].duration) {
       pool[i].active = 0;
       continue;
     }
+
+    // Accumulate active bubble mass cleanly for downstream processing
+    //    g_total_cavity_radius_mass += (float)pool[ i]. radius;
 
     double progress = pool[i].age / pool[i].duration;
 
@@ -726,7 +748,7 @@ void process_minnaert_flow_engine(Droplet *pool, int pool_size, double dt,
       pool[i].active = 0;
       continue;
     }
-
+    g_total_cavity_radius_mass += (float)current_radius;
     // 2. THE PHYSICAL MINNAERT FORMULA
     // f = (1 / (2 * PI * R)) * sqrt((3 * gamma * P0) / rho)
     double minnaert_frequency = minnaert_constant / current_radius;
@@ -746,6 +768,23 @@ void process_minnaert_flow_engine(Droplet *pool, int pool_size, double dt,
                                 ((0.75 * damp_fast) + (0.25 * damp_slow)) *
                                 sin(M_PI * progress);
 
+    double release_envelope = 1.0;
+    //     double time_remaining = pool[ i]. duration - pool[ i]. age;
+
+    // --- FIX B: THE DOUBLE-BUFFERED ENVELOPE (FADE-IN & FADE-OUT) ---
+    double click_protection_envelope = 1.0;
+
+    // 1. Smooth Attack: Softens the initial phase snap over the first 2ms
+    if (pool[i].age < 0.002) {
+      click_protection_envelope = pool[i].age / 0.002;
+    }
+
+    // 2. Smooth Release: Softens the end of the note over the last 5ms
+    //    double time_remaining = pool[ i]. duration - pool[ i]. age;
+    //  if (time_remaining < 0.005 && time_remaining > 0.0) {
+    //    click_protection_envelope = time_remaining / 0.005;
+    //   }
+
     // 5. PHASE ACCUMULATION
     pool[i].current_phase += (2.0 * M_PI * final_target_freq) * dt;
     if (pool[i].current_phase > 2.0 * M_PI) {
@@ -753,7 +792,14 @@ void process_minnaert_flow_engine(Droplet *pool, int pool_size, double dt,
     }
 
     // 6. SYNTHESIZE MONO SOUND PRESSURE VALUE
-    double sample_mono = composite_envelope * sin(pool[i].current_phase);
+    // Inside process_minnaert_flow_engine, add smoothing to fade out
+    double time_remaining = pool[i].duration - pool[i].age;
+    double click_guard = 1.0;
+    if (time_remaining < 0.005) { // 5ms fade-out
+      click_guard = time_remaining / 0.005;
+    }
+    double sample_mono =
+        composite_envelope * sin(pool[i].current_phase) * click_guard;
 
     // 7. ROUTE INTO WIDE STEREO AUDIO BUS
     // Incorporates your equal-power spatial panning vectors into your master
@@ -803,7 +849,7 @@ int main() {
   }
 
   int16_t buffer[BUFFER_FRAMES * 2];
-  double speed_modifier = 0.7; // 1.0 is normal, 0.5 is half speed (slower)
+  double speed_modifier = 1.0; // 1.0 is normal, 0.5 is half speed (slower)
   double dt = (1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ) * speed_modifier;
 
   // double dt = 1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ;
@@ -815,13 +861,39 @@ int main() {
       double cluster_jitter = 1.0 + 0.8 * sin(total_elapsed_time * 7.3) *
                                         cos(total_elapsed_time * 19.1);
 
-      if (rand_double(0.0, 100.0) < (1.0 * speed_modifier + cluster_jitter)) {
-        trigger_droplet();
+      // Advance the arpeggiator sample clock countdown
+      arp_sample_timer++;
+
+      // Trigger a step evaluation exactly when our 12ms sample window expires
+      if (arp_sample_timer >= ARP_STEP_SAMPLES) {
+        arp_sample_timer = 0; // Reset countdown instantly
+
+        // Generate a precise random percentage roll between 0.0 and 100.0
+        float probability_roll = (float)rand() / (float)RAND_MAX * 100.0f;
+
+        // Apply your cluster jitter modifier directly to the density threshold
+        // --- CAVITY RADIUS INJECTION ---
+        float feedback_modifier = g_total_cavity_radius_mass * 85.0f;
+        if (feedback_modifier > 35.0f)
+          feedback_modifier = 35.0f; // Clamp
+
+        float dynamic_chance =
+            arp_spawn_chance + (cluster_jitter * 2.5f) + feedback_modifier;
+
+        // Gate keeper check: Trigger a unique drop voice only if the roll beats
+        // the odds
+        if (probability_roll < dynamic_chance) {
+          // Spawns 3 micro-droplets in the same frame for a dense, splashing
+          // cascade
+          int drops_to_spawn = (g_total_cavity_radius_mass > 0.1f) ? 4 : 2;
+          trigger_droplet();
+        }
       }
-   //  if (rand_double(0.0, 100.0) < (1.0 * speed_modifier * cluster_jitter))
-  //     {
-    //  trigger_vandoel_medium_bubble();
-    //   }
+
+      //   if (rand_double(0.0, 100.0) < (1.0 * speed_modifier *
+      //   cluster_jitter)) {
+      //     trigger_vandoel_medium_bubble();
+      //   }
       // Highly aggressive spawn rate to keep the 100-channel allocation engine
       // saturated
       // if (rand_double (0.0, 100.0) < 1.5)
@@ -1134,100 +1206,52 @@ int main() {
       // 1. Progress the master timeline clock sample-by-sample
       // Locate line ~954 inside the main execution while loop:
       // Remove the old inline droplet loop and substitute this single engine
-      // execution:
+      // execution: [Insert at Line 1138, replacing legacy code]
       process_minnaert_flow_engine(droplets, NUM_DROPLETS, dt, &mixed_left,
                                    &mixed_right);
 
-      lpf_state_l =
-          lpf_state_l + LPF_ALPHA * ((float)amplified_L - lpf_state_l);
-      lpf_state_r =
-          lpf_state_r + LPF_ALPHA * ((float)amplified_R - lpf_state_r);
+      // Clean, high-precision mixing pipeline
+      float current_bubble_L = (float)mixed_left;
+      float current_bubble_R = (float)mixed_right;
 
-      // Convert back to integers
-      amplified_L = (int32_t)lpf_state_l;
-      amplified_R = (int32_t)lpf_state_r;
-      // ==========================================
+      // Fluid Smudge & Filtering
+      fluid_history_l +=
+          fluid_smudge_factor * (current_bubble_L - fluid_history_l);
+      fluid_history_r +=
+          fluid_smudge_factor * (current_bubble_R - fluid_history_r);
 
-      // float background_roar_l = generate_pink_noise(&pink_left) * 0.04f; //
-      // 4% mix level float background_roar_r = generate_pink_noise(&pink_right)
-      // * 0.04f;
-      //  5. Output clean raw interleaved binary streams to standard out
-      //   int16_t out_sample;
-      //     float constant_background_roar =
-      //      (((float)rand() / (float)RAND_MAX) * 2.0f) - 1.0f;
-      // Replace lines 699 - 709 with this line:
-      float background_roar =
-          generate_pink_noise() *
-          5.0f; // Increased to 12% for a richer, deeper background water roar
+      float smudged_bubble_L = fluid_history_l * 1.8f;
+      float smudged_bubble_R = fluid_history_r * 1.8f;
 
-      // Apply a rough bandpass filter to mask the noise or damp it heavily
-      //  constant_background_roar *=
-      0.03f; // Keep it low (3% volume) to act as a glue layer
-
-      if (sample_counter++ >= 64) {
-        cached_hydro_sample = step_sph_hydro_sample(150.0f); // Run SPH step
-        sample_counter = 0;                                  // Reset counter
-      }
-
-      float hydro_sample = cached_hydro_sample;
-
-      // Hard limiter to safely prevent digital clipping distortion
-      if (hydro_sample > 1.0f)
-        hydro_sample = 1.0f;
-      if (hydro_sample < -1.0f)
-        hydro_sample = -1.0f;
-
-      // 3. Write directly to your project's active output array type
-      // If your code uses 16-bit integer streams (AUDIO_S16):
-      //    audio_output_buffer[i] = (int16_t)(hydro_sample * 32767.0f);
-
-      // --- INSERT THIS DIRECT BLOCK TO LIQUIDIZE THE SOUND ---
-
-      // 1. Blend the current bubble sample into the historical audio track
-      // This drags the individual sharp peaks horizontally, fusing them
-      // together
-      fluid_history_l = fluid_history_l +
-                        fluid_smudge_factor * (amplified_L - fluid_history_l);
-      fluid_history_r = fluid_history_r +
-                        fluid_smudge_factor * (amplified_R - fluid_history_r);
-
-      // 2. Assign the smoothly integrated liquid output back to your channels
-      // We apply a small boost (1.8f) to perfectly restore any perceived volume
-      // loss
-      amplified_L = fluid_history_l * 1.8f;
-      amplified_R = fluid_history_r * 1.8f;
-
-      // -------------------------------------------------------
-
-      // --- INSERT THIS HIGH-PASS BLOCK TO ELIMINATE THE BASS RUMBLE ---
-
-      // 1. Left Channel High-Pass Filter Math
+      // Apply HPF and generate environment
       float current_hp_l =
-          hp_alpha * (hp_prev_out_l + amplified_L - hp_prev_in_l);
-      hp_prev_in_l = amplified_L;
+          hp_alpha * (hp_prev_out_l + smudged_bubble_L - hp_prev_in_l);
+      hp_prev_in_l = smudged_bubble_L;
       hp_prev_out_l = current_hp_l;
-      amplified_L = current_hp_l;
 
-      // 2. Right Channel High-Pass Filter Math
       float current_hp_r =
-          hp_alpha * (hp_prev_out_r + amplified_R - hp_prev_in_r);
-      hp_prev_in_r = amplified_R;
+          hp_alpha * (hp_prev_out_r + smudged_bubble_R - hp_prev_in_r);
+      hp_prev_in_r = smudged_bubble_R;
       hp_prev_out_r = current_hp_r;
-      amplified_R = current_hp_r;
 
-      // -----------------------------------------------------------------
+      // Final mix with clamp protection
+      float out_L = (current_hp_l + (generate_pink_noise() * 0.05f)) * 32767.0f;
+      float out_R = (current_hp_r + (generate_pink_noise() * 0.05f)) * 32767.0f;
 
+      // Strict boundary clamping
       buffer[f * 2] =
-          (int16_t)(((amplified_L + hydro_sample + background_roar)));
+          (int16_t)(out_L > 32767.0f ? 32767.0f
+                                     : (out_L < -32768.0f ? -32768.0f : out_L));
       buffer[f * 2 + 1] =
-          (int16_t)(((amplified_R + hydro_sample + background_roar)));
+          (int16_t)(out_R > 32767.0f ? 32767.0f
+                                     : (out_R < -32768.0f ? -32768.0f : out_R));
     }
     //   safe_volume_boost_alsa(buffer, BUFFER_FRAMES, 1.0f);
     // Locate line ~769 in your main loop right before snd_pcm_writei:
     // A smoothing_radius of 3.0f to 5.0f smooths out bubble popping textures
     // nicely.
-      smooth_bubbles_sph(buffer, BUFFER_FRAMES, 8.5f);
-      blur_bubbles_engine(buffer, BUFFER_FRAMES);
+    smooth_bubbles_sph(buffer, BUFFER_FRAMES, 16.0f);
+    blur_bubbles_engine(buffer, BUFFER_FRAMES);
     // snd_pcm_writei(pcm_handle, buffer, BUFFER_FRAMES);
 
     // smooth_bubbles_sph(buffer, BUFFER_FRAMES, 5.0f);
