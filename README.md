@@ -5,6 +5,10 @@
 Audio Preview:
 <br><br>
 
+[bwe_soundscape.wav](https://github.com/user-attachments/files/29082025/bwe_soundscape.wav)
+
+
+
 <br><br>
 This program will generate a synthetic soundscape with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
