@@ -24,13 +24,211 @@
 #define BUFFER_SIZE 4096
 #define SAMPLE_RATE 44100
 #define STREAM_BUFFER_SIZE 1024
-
+static int blur_initializedx = 0;
 // Physical Sound Mesh Dimensions (Balanced for real-time DSP stability)
 #define MESH_ROWS 32
 #define MESH_COLS 32
 
 // Comfort volume scale (0.0f = muted, 1.0f = full loudness)
 #define VOLUME_SCALE 5.00f
+
+
+
+
+
+#define SAMPLE_RATE 44100
+#define CHANNELS 2          
+#define BUFFER_SIZE 256
+#define MAX_BUBBLES 64
+
+static const float C_SPEED = 0.15f;        
+static const float DAMPING = 0.992f;  
+
+static float grid1[GRID_SIZE][GRID_SIZE];
+static float grid2[GRID_SIZE][GRID_SIZE];
+static float (*current_grid)[GRID_SIZE] = NULL;
+static float (*previous_grid)[GRID_SIZE] = NULL;
+
+
+static const int BLUR_DELAYS[METALLIC_FIX_STAGES] =
+  { 1433, 1973, 2657, 3529 };
+typedef struct
+{
+  float *buffer;
+  int size;
+  int idx;
+  float lpf_state;
+} OrganicBlurStage;
+static OrganicBlurStage blur_L[METALLIC_FIX_STAGES];
+static OrganicBlurStage blur_R[METALLIC_FIX_STAGES];
+static float x1_L = 0.0f, x2_L = 0.0f, y1_L = 0.0f, y2_L = 0.0f;
+static float x1_R = 0.0f, x2_R = 0.0f, y1_R = 0.0f, y2_R = 0.0f;
+static int blur_initialized = 0;
+void 
+init_organic_blur_static_safe (void)
+{
+  if (blur_initialized)
+    return;
+  for (int i = 0; i < METALLIC_FIX_STAGES; i++)
+    {
+      blur_L[i].size = BLUR_DELAYS[i];
+      blur_L[i].buffer = (float *) malloc (BLUR_DELAYS[i] * sizeof (float));
+      blur_R[i].size = BLUR_DELAYS[i];
+      blur_R[i].buffer = (float *) malloc (BLUR_DELAYS[i] * sizeof (float));
+      if (blur_L[i].buffer && blur_R[i].buffer)
+	{
+	  memset (blur_L[i].buffer, 0, BLUR_DELAYS[i] * sizeof (float));
+	  memset (blur_R[i].buffer, 0, BLUR_DELAYS[i] * sizeof (float));
+	}
+      blur_L[i].idx = 0;
+      blur_L[i].lpf_state = 0.0f;
+      blur_R[i].idx = 0;
+      blur_R[i].lpf_state = 0.0f;
+    }
+  x1_L = x2_L = y1_L = y2_L = 0.0f;
+  x1_R = x2_R = y1_R = y2_R = 0.0f;
+  blur_initialized = 1;
+}
+float
+process_organic_sample (float input, OrganicBlurStage *stages)
+{
+  float sample = input;
+  const float diffusion = 0.65f;
+  const float damping = 0.65f;
+  for (int i = 0; i < METALLIC_FIX_STAGES; i++)
+    {
+      if (!stages[i].buffer)
+	return input;
+      int idx = stages[i].idx;
+      int size = stages[i].size;
+      float delayed = stages[i].buffer[idx];
+      stages[i].lpf_state += damping * (delayed - stages[i].lpf_state);
+      delayed = stages[i].lpf_state;
+      float output = -diffusion * sample + delayed;
+      stages[i].buffer[idx] = sample + diffusion * delayed;
+      stages[i].idx = (idx + 1) % size;
+      sample = output;
+    }
+  return sample;
+}
+void
+blur_bubbles_engine (int16_t *buffer, int frames)
+{
+  if (!blur_initialized)
+    {
+      init_organic_blur_static_safe ();
+    }
+  const float ocean_wash_blend = 0.05f;
+  const float stream_gain_limit = 5.0f;
+  const float b0 = 0.046f, b1 = 0.0f, b2 = -0.046f;
+  const float a1 = -1.890f, a2 = 0.907f;
+  for (int f = 0; f < frames; f++)
+    {
+      float left_in = (float) buffer[f * 2];
+      float right_in = (float) buffer[f * 2 + 1];
+      float wet_l = process_organic_sample (left_in, blur_L);
+      float wet_r = process_organic_sample (right_in, blur_R);
+      float raw_mix_L =
+	(left_in * (1.0f - ocean_wash_blend)) + (wet_l * ocean_wash_blend);
+      float raw_mix_R =
+	(right_in * (1.0f - ocean_wash_blend)) + (wet_r * ocean_wash_blend);
+      float brook_L =
+	b0 * raw_mix_L + b1 * x1_L + b2 * x2_L - a1 * y1_L - a2 * y2_L;
+      x2_L = x1_L;
+      x1_L = raw_mix_L;
+      y2_L = y1_L;
+      y1_L = brook_L;
+      float brook_R =
+	b0 * raw_mix_R + b1 * x1_R + b2 * x2_R - a1 * y1_R - a2 * y2_R;
+      x2_R = x1_R;
+      x1_R = raw_mix_R;
+      y2_R = y1_R;
+      y1_R = brook_R;
+      float out_l = brook_L * stream_gain_limit;
+      float out_r = brook_R * stream_gain_limit;
+      if (out_l > 32767.0f)
+	out_l = 32767.0f;
+      if (out_l < -32768.0f)
+	out_l = -32768.0f;
+      if (out_r > 32767.0f)
+	out_r = 32767.0f;
+      if (out_r < -32768.0f)
+	out_r = -32768.0f;
+      buffer[f * 2] = (int16_t) out_l;
+      buffer[f * 2 + 1] = (int16_t) out_r;
+    }
+}
+// ============================================================================
+// 🎛️ CORE SOUND ENGINE ENVIRONMENT VARIABLES
+// ============================================================================
+static const float FLUID_SPEED     = 10.40f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
+
+// Bubble Radius Bounds (in meters)
+// - Sub-millimeter sizes (e.g., 0.0002f) produce high-pitched, crystalline chimes
+// - Larger sizes (e.g., 0.005f) produce deep, hollow, dripping plop tones
+static const float BUBBLE_SIZE_MIN = 0.0005f; // Minimum bubble radius cutoff
+static const float BUBBLE_SIZE_MAX = 0.05f; // Maximum bubble radius cutoff
+// ============================================================================
+
+typedef struct {
+    int active;
+    float phase, amp, decay, pan, base_radius, age;
+} CrystalBubble;
+
+static CrystalBubble pool[MAX_BUBBLES];
+static snd_pcm_t *pcm;
+
+float minnaert_freq(float r) {
+    if (r <= 0.00001f) return 20000.0f;
+    return (1.0f / (2.0f * (float)M_PI * r)) * sqrtf((3.0f * 1.4f * 101325.0f) / 1000.0f);
+}
+
+void trigger_crystal(float energy, float pan) {
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (!pool[i].active) {
+            pool[i].active = 1; 
+            pool[i].phase = 0.0f; 
+            pool[i].pan = pan; 
+            pool[i].age = 0.0f;
+            
+            // Map the size parameters dynamically between the defined min and max variables
+            float size_range = BUBBLE_SIZE_MAX - BUBBLE_SIZE_MIN;
+            pool[i].base_radius = BUBBLE_SIZE_MIN + ((1.0f - energy) * size_range); 
+            
+            pool[i].amp = 0.20f * energy; 
+            pool[i].decay = 0.995f; 
+            break;
+        }
+    }
+}
+
+void render_samples(float *l, float *r) {
+    *l = 0.0f; *r = 0.0f;
+    float dt = 1.0f / SAMPLE_RATE;
+
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (pool[i].active) {
+            float current_radius = pool[i].base_radius * (1.0f - 0.12f * logf(1.0f + (pool[i].age * FLUID_SPEED) * 40.0f));
+            float current_freq = minnaert_freq(current_radius);
+            
+            float s = sinf(pool[i].phase) * pool[i].amp;
+            *l += s * (1.0f - pool[i].pan); 
+            *r += s * pool[i].pan;
+            
+            pool[i].phase += 2.0f * (float)M_PI * current_freq * dt;
+            pool[i].amp *= pool[i].decay;
+            pool[i].age += dt;
+
+            if (pool[i].amp < 0.0001f || current_freq > 19500.0f) {
+                pool[i].active = 0;
+            }
+        }
+    }
+    
+    if (*l > 0.95f) *l = 0.95f; else if (*l < -0.95f) *l = -0.95f;
+    if (*r > 0.95f) *r = 0.95f; else if (*r < -0.95f) *r = -0.95f;
+}
+
 
 typedef struct {
     int keep_running;
@@ -159,11 +357,8 @@ void play_waveguide_mesh_sound() {
     pthread_t thread;
     EngineControl ctrl = { .keep_running = 1 };
 
-    printf("====================================================\n");
-    printf(" Playing 2D Digital Waveguide Sound Mesh Soundscape \n");
-    printf("====================================================\n");
-    printf("Mesh Physics Active.");
-    printf("Streaming via libasound... Press [ENTER] to stop.\n\n");
+  
+    printf("Streaming via libasound...\n\n");
 
     if (pthread_create(&thread, NULL, run_waveguide_mesh_engine, &ctrl) != 0) {
         fprintf(stderr, "Thread initialization error.\n");
@@ -195,114 +390,8 @@ sph_cubic_spline_kernel (float distance, float h)
       return sigma * (2.0f * powf (1.0f - q, 3.0f));
     }
 }
-static const int BLUR_DELAYS[METALLIC_FIX_STAGES] =
-  { 1433, 1973, 2657, 3529 };
-typedef struct
-{
-  float *buffer;
-  int size;
-  int idx;
-  float lpf_state;
-} OrganicBlurStage;
-static OrganicBlurStage blur_L[METALLIC_FIX_STAGES];
-static OrganicBlurStage blur_R[METALLIC_FIX_STAGES];
-static float x1_L = 0.0f, x2_L = 0.0f, y1_L = 0.0f, y2_L = 0.0f;
-static float x1_R = 0.0f, x2_R = 0.0f, y1_R = 0.0f, y2_R = 0.0f;
-static int blur_initialized = 0;
-void
-init_organic_blur_static_safe (void)
-{
-  if (blur_initialized)
-    return;
-  for (int i = 0; i < METALLIC_FIX_STAGES; i++)
-    {
-      blur_L[i].size = BLUR_DELAYS[i];
-      blur_L[i].buffer = (float *) malloc (BLUR_DELAYS[i] * sizeof (float));
-      blur_R[i].size = BLUR_DELAYS[i];
-      blur_R[i].buffer = (float *) malloc (BLUR_DELAYS[i] * sizeof (float));
-      if (blur_L[i].buffer && blur_R[i].buffer)
-	{
-	  memset (blur_L[i].buffer, 0, BLUR_DELAYS[i] * sizeof (float));
-	  memset (blur_R[i].buffer, 0, BLUR_DELAYS[i] * sizeof (float));
-	}
-      blur_L[i].idx = 0;
-      blur_L[i].lpf_state = 0.0f;
-      blur_R[i].idx = 0;
-      blur_R[i].lpf_state = 0.0f;
-    }
-  x1_L = x2_L = y1_L = y2_L = 0.0f;
-  x1_R = x2_R = y1_R = y2_R = 0.0f;
-  blur_initialized = 1;
-}
-float
-process_organic_sample (float input, OrganicBlurStage *stages)
-{
-  float sample = input;
-  const float diffusion = 0.65f;
-  const float damping = 0.35f;
-  for (int i = 0; i < METALLIC_FIX_STAGES; i++)
-    {
-      if (!stages[i].buffer)
-	return input;
-      int idx = stages[i].idx;
-      int size = stages[i].size;
-      float delayed = stages[i].buffer[idx];
-      stages[i].lpf_state += damping * (delayed - stages[i].lpf_state);
-      delayed = stages[i].lpf_state;
-      float output = -diffusion * sample + delayed;
-      stages[i].buffer[idx] = sample + diffusion * delayed;
-      stages[i].idx = (idx + 1) % size;
-      sample = output;
-    }
-  return sample;
-}
-void
-blur_bubbles_engine (int16_t *buffer, int frames)
-{
-  if (!blur_initialized)
-    {
-      init_organic_blur_static_safe ();
-    }
-  const float ocean_wash_blend = 0.25f;
-  const float stream_gain_limit = 5.0f;
-  const float b0 = 0.046f, b1 = 0.0f, b2 = -0.046f;
-  const float a1 = -1.890f, a2 = 0.907f;
-  for (int f = 0; f < frames; f++)
-    {
-      float left_in = (float) buffer[f * 2];
-      float right_in = (float) buffer[f * 2 + 1];
-      float wet_l = process_organic_sample (left_in, blur_L);
-      float wet_r = process_organic_sample (right_in, blur_R);
-      float raw_mix_L =
-	(left_in * (1.0f - ocean_wash_blend)) + (wet_l * ocean_wash_blend);
-      float raw_mix_R =
-	(right_in * (1.0f - ocean_wash_blend)) + (wet_r * ocean_wash_blend);
-      float brook_L =
-	b0 * raw_mix_L + b1 * x1_L + b2 * x2_L - a1 * y1_L - a2 * y2_L;
-      x2_L = x1_L;
-      x1_L = raw_mix_L;
-      y2_L = y1_L;
-      y1_L = brook_L;
-      float brook_R =
-	b0 * raw_mix_R + b1 * x1_R + b2 * x2_R - a1 * y1_R - a2 * y2_R;
-      x2_R = x1_R;
-      x1_R = raw_mix_R;
-      y2_R = y1_R;
-      y1_R = brook_R;
-      float out_l = brook_L * stream_gain_limit;
-      float out_r = brook_R * stream_gain_limit;
-      if (out_l > 32767.0f)
-	out_l = 32767.0f;
-      if (out_l < -32768.0f)
-	out_l = -32768.0f;
-      if (out_r > 32767.0f)
-	out_r = 32767.0f;
-      if (out_r < -32768.0f)
-	out_r = -32768.0f;
-      buffer[f * 2] = (int16_t) out_l;
-      buffer[f * 2 + 1] = (int16_t) out_r;
-    }
-}
+
+
 void
 smooth_bubbles_sph (int16_t *buffer, int frames, float smoothing_radius)
 {
@@ -378,10 +467,10 @@ int reverb_idx = 0;
 const float feedback = 0.1f;
 const float dry_mix = 0.65f;
 const float wet_mix = 0.45f;
-const double MASTER_VOLUME = 80;
+const double MASTER_VOLUME = 50;
 double BUBBLE_RATE_HZ = 1.0;
-double DROPLET_SIZE_MIN = 0.00005;
-double DROPLET_SIZE_MAX = 0.0025;
+double DROPLET_SIZE_MIN = 0.000010;
+double DROPLET_SIZE_MAX = 0.00025;
 typedef struct
 {
   int active;
@@ -444,6 +533,40 @@ void* loop_one(void* arg) {
   return NULL;
 }
 
+void* loop_three(void* arg) {
+if (snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
+        fprintf(stderr, "Error: Could not open ALSA device.\n");
+        return 0;
+    }
+    snd_pcm_set_params(pcm, SND_PCM_FORMAT_FLOAT_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2, SAMPLE_RATE, 1, 50000);
+    
+    float buf[BUFFER_SIZE * 2];
+ 
+    printf("💧 Infinite Liquid Space Active... Press Enter to terminate.\n");
+    
+    int spawn_threshold = (int)(15.0f / FLUID_SPEED);
+    if (spawn_threshold < 2) spawn_threshold = 2;
+
+    while (1) {
+        if (rand() % spawn_threshold == 0) { 
+            float random_pan = (float)rand() / (float)RAND_MAX;
+            float random_energy = 0.6f + (((float)rand() / (float)RAND_MAX) * 0.4f);
+            trigger_crystal(random_energy, random_pan);
+        }
+        
+        for (int i = 0; i < BUFFER_SIZE; i++) {
+            render_samples(&buf[i*2], &buf[i*2+1]);
+        }
+        
+        if (snd_pcm_writei(pcm, buf, BUFFER_SIZE) < 0) {
+            snd_pcm_prepare(pcm); 
+        }
+    }
+    
+    snd_pcm_close(pcm); 
+    return 0;
+}
+
 // Function for the second while loop
 void* loop_two(void* arg) {
     
@@ -479,9 +602,9 @@ void* loop_two(void* arg) {
       droplets[i].active = 0;
     }
   int16_t buffer[BUFFER_FRAMES * 2];
-  double speed_modifier = 1;
+  double speed_modifier = 0.5;
   double dt = (1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ) * speed_modifier;
-  printf ("Now Streaming...\n");
+  
   while (1)
     {
       for (int f = 0; f < BUFFER_FRAMES; f++)
@@ -679,12 +802,13 @@ void* loop_two(void* arg) {
 	    (((float) rand () / (float) RAND_MAX) * 2.0f) - 1.0f;
 	  constant_background_roar *= 0.03f;
 	  buffer[f * 2] =
-	    (int16_t) (((amplified_L + constant_background_roar)));
+	    (int16_t) (((amplified_L)));
 	  buffer[f * 2 + 1] =
-	    (int16_t) (((amplified_R + constant_background_roar)));
+	    (int16_t) (((amplified_R)));
 	}
 	
       smooth_bubbles_sph (buffer, BUFFER_FRAMES, 16.0f);
+    //  blur_bubbles_engine(buffer, BUFFER_FRAMES);
       snd_pcm_sframes_t written =
 	snd_pcm_writei (pcm_handle, buffer, BUFFER_FRAMES);
       if (written < 0)
@@ -708,16 +832,173 @@ void* loop_two(void* arg) {
     
 }
 
+
+
+
+typedef struct {
+    int active;
+    float frequency;
+    float phase;
+    float amplitude;
+    float decay;
+    float pan; 
+} Bubblezx;
+
+static Bubblezx bubble_pool[MAX_BUBBLES];
+
+void init_grid(void) {
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            grid1[i][j] = 0.0f;
+            grid2[i][j] = 0.0f;
+        }
+    }
+    current_grid = &grid1;
+    previous_grid = &grid2;
+
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        bubble_pool[i].active = 0;
+    }
+}
+
+void trigger_minnaert_bubble(float grid_energy, int x, int y) {
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (!bubble_pool[i].active) {
+            float radius = 0.0005f + ((1.0f - grid_energy) * 0.003f); 
+            bubble_pool[i].active = 1;
+            bubble_pool[i].frequency = 3.26f / radius;
+            bubble_pool[i].phase = 0.0f;
+            bubble_pool[i].amplitude = grid_energy * 0.15f;
+            bubble_pool[i].decay = expf(-0.04f * bubble_pool[i].frequency / SAMPLE_RATE); 
+            bubble_pool[i].pan = (float)x / (float)GRID_SIZE; 
+            break;
+        }
+    }
+}
+
+void render_next_sample(float *out_left, float *out_right) {
+    if ((rand() % 1000) < 15) { 
+        int cx = 5 + rand() % (GRID_SIZE - 10);
+        int cy = 5 + rand() % (GRID_SIZE - 10);
+        current_grid[cx][cy] += 0.4f + ((float)rand() / (float)RAND_MAX) * 0.6f;
+    }
+
+    for (int i = 1; i < GRID_SIZE - 1; i++) {
+        for (int j = 1; j < GRID_SIZE - 1; j++) {
+            float neighbors = previous_grid[i-1][j] + previous_grid[i+1][j] + 
+                              previous_grid[i][j-1] + previous_grid[i][j+1];
+            float next_val = (neighbors * C_SPEED) + (previous_grid[i][j] * (2.0f - 4.0f * C_SPEED)) - current_grid[i][j];
+            next_val *= DAMPING;
+
+            float velocity = fabsf(next_val - current_grid[i][j]);
+            if (velocity > 0.15f && (rand() % 100) < 5) {
+                trigger_minnaert_bubble(velocity > 1.0f ? 1.0f : velocity, i, j);
+            }
+            current_grid[i][j] = next_val;
+        }
+    }
+
+    float (*tmp)[GRID_SIZE] = current_grid;
+    current_grid = previous_grid;
+    previous_grid = tmp;
+
+    *out_left = 0.0f;
+    *out_right = 0.0f;
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (bubble_pool[i].active) {
+            float wave = sinf(bubble_pool[i].phase) * bubble_pool[i].amplitude;
+            *out_left  += wave * (1.0f - bubble_pool[i].pan);
+            *out_right += wave * bubble_pool[i].pan;
+            bubble_pool[i].phase += 2.0f * (float)M_PI * bubble_pool[i].frequency / SAMPLE_RATE;
+            bubble_pool[i].amplitude *= bubble_pool[i].decay;
+            if (bubble_pool[i].amplitude < 0.001f) bubble_pool[i].active = 0;
+        }
+    }
+}
+
+// Unified Sound Engine: Pass a float from 0.0 to 1.0 to set master volume level
+void run_soundscape_engine(snd_pcm_t *pcm_handle, float volume) {
+    short buffer[BUFFER_SIZE * CHANNELS];
+    int rc;
+
+    
+
+    while (1) {
+        for (int i = 0; i < BUFFER_SIZE; i++) {
+            float sample_l = 0.0f;
+            float sample_r = 0.0f;
+            
+            render_next_sample(&sample_l, &sample_r);
+
+            // Apply the volume attenuation scaling variable
+            sample_l *= volume;
+            sample_r *= volume;
+
+            if (sample_l > 1.0f)  sample_l = 1.0f;
+            if (sample_l < -1.0f) sample_l = -1.0f;
+            if (sample_r > 1.0f)  sample_r = 1.0f;
+            if (sample_r < -1.0f) sample_r = -1.0f;
+
+            buffer[i * 2]     = (short)(sample_l * 32767.0f);
+            buffer[i * 2 + 1] = (short)(sample_r * 32767.0f);
+        }
+
+        rc = snd_pcm_writei(pcm_handle, buffer, BUFFER_SIZE);
+        if (rc == -EPIPE) {
+            snd_pcm_prepare(pcm_handle);
+        } else if (rc < 0) {
+            fprintf(stderr, "Error writing to PCM device: %s\n", snd_strerror(rc));
+        }
+    }
+}
+void* loop_four(void* arg) {
+   snd_pcm_t *pcm_handle;
+    snd_pcm_hw_params_t *params;
+    int rc;
+
+    init_grid();
+
+    rc = snd_pcm_open(&pcm_handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
+    if (rc < 0) {
+        fprintf(stderr, "Cannot open PCM device: %s\n", snd_strerror(rc));
+        return 0;
+    }
+
+    snd_pcm_hw_params_alloca(&params);
+    snd_pcm_hw_params_any(pcm_handle, params);
+    snd_pcm_hw_params_set_access(pcm_handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format(pcm_handle, params, SND_PCM_FORMAT_S16_LE);
+    snd_pcm_hw_params_set_channels(pcm_handle, params, CHANNELS);
+    unsigned int val = SAMPLE_RATE;
+    snd_pcm_hw_params_set_rate_near(pcm_handle, params, &val, 0);
+
+    rc = snd_pcm_hw_params(pcm_handle, params);
+    if (rc < 0) {
+        fprintf(stderr, "Cannot set HW parameters: %s\n", snd_strerror(rc));
+        return 0;
+    }
+
+    // --- EXACTLY ONE FUNCTION CALL IN MAIN WITH THE VOLUME ARGUEMENT (0.25f = 25% Volume) ---
+    run_soundscape_engine(pcm_handle, 0.25f);
+
+    snd_pcm_drain(pcm_handle);
+    snd_pcm_close(pcm_handle);
+    return 0;
+}
 int main() {
-    pthread_t thread1, thread2;
+    pthread_t thread1, thread2, thread3, thread4;
 
     // Create the threads and assign their functions
     pthread_create(&thread1, NULL, loop_one, NULL);
     pthread_create(&thread2, NULL, loop_two, NULL);
+    pthread_create(&thread3, NULL, loop_three, NULL);
+    pthread_create(&thread4, NULL, loop_four, NULL);
+
 
     // Wait for the threads to finish (they run forever in this example)
     pthread_join(thread1, NULL);
     pthread_join(thread2, NULL);
-
+    pthread_join(thread3, NULL);
+    pthread_join(thread4, NULL);
     return 0;
 }
