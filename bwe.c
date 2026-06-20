@@ -6,24 +6,23 @@
 #include <stdlib.h>
 #include <time.h>
 #include <pthread.h>
+#include <sys/resource.h>
 #define SPH_WINDOW_SIZE 5
 #define METALLIC_FIX_STAGES 4
 #define BUFFER_LEN 1024
 #define TWO_PI 6.283185307179586
 #define MAX_BUBBLES 128
 #define PI 3.14159265358979323846
-#define GRID_SIZE 64
+#define GRID_SIZE 32
 #define MAX_POLYPHONY 4
 #define SLOW_LFO_SPEED 0.0012f
 #define SAMPLE_RATE 44100
 #define PCM_DEVICE "default"
-#define BUFFER_FRAMES 2048
-#define NUM_DROPLETS 300
+#define BUFFER_FRAMES 4096
+#define NUM_DROPLETS 128
 #define REVERB_DELAY_SAMPLES 6000
 #define SAMPLE_RATE 44100
-#define BUFFER_SIZE 4096
-#define SAMPLE_RATE 44100
-#define STREAM_BUFFER_SIZE 1024
+#define STREAM_BUFFER_SIZE 2048 // loop1 wavemesh
 static int blur_initializedx = 0;
 // Physical Sound Mesh Dimensions (Balanced for real-time DSP stability)
 #define MESH_ROWS 32
@@ -38,8 +37,9 @@ static int blur_initializedx = 0;
 
 #define SAMPLE_RATE 44100
 #define CHANNELS 2          
-#define BUFFER_SIZE 256
-#define MAX_BUBBLES 64
+#define BUFFER_SIZEX 256  // midtones loop3
+#define BUFFER_SIZEXZ 4096 // crystalline loop4
+#define MAX_BUBBLES 128
 
 static const float C_SPEED = 0.15f;        
 static const float DAMPING = 0.992f;  
@@ -93,8 +93,8 @@ float
 process_organic_sample (float input, OrganicBlurStage *stages)
 {
   float sample = input;
-  const float diffusion = 0.65f;
-  const float damping = 0.65f;
+  const float diffusion = 0.15f;
+  const float damping = 0.25f;
   for (int i = 0; i < METALLIC_FIX_STAGES; i++)
     {
       if (!stages[i].buffer)
@@ -118,7 +118,7 @@ blur_bubbles_engine (int16_t *buffer, int frames)
     {
       init_organic_blur_static_safe ();
     }
-  const float ocean_wash_blend = 0.05f;
+  const float ocean_wash_blend = 0.5f;
   const float stream_gain_limit = 5.0f;
   const float b0 = 0.046f, b1 = 0.0f, b2 = -0.046f;
   const float a1 = -1.890f, a2 = 0.907f;
@@ -161,7 +161,7 @@ blur_bubbles_engine (int16_t *buffer, int frames)
 // ============================================================================
 // 🎛️ CORE SOUND ENGINE ENVIRONMENT VARIABLES
 // ============================================================================
-static const float FLUID_SPEED     = 10.40f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
+static const float FLUID_SPEED     = 10.0f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
 
 // Bubble Radius Bounds (in meters)
 // - Sub-millimeter sizes (e.g., 0.0002f) produce high-pitched, crystalline chimes
@@ -357,8 +357,8 @@ void play_waveguide_mesh_sound() {
     pthread_t thread;
     EngineControl ctrl = { .keep_running = 1 };
 
-  
-    printf("Streaming via libasound...\n\n");
+    
+    printf("Streaming via libasound... Press [ENTER] to stop.\n\n");
 
     if (pthread_create(&thread, NULL, run_waveguide_mesh_engine, &ctrl) != 0) {
         fprintf(stderr, "Thread initialization error.\n");
@@ -467,7 +467,7 @@ int reverb_idx = 0;
 const float feedback = 0.1f;
 const float dry_mix = 0.65f;
 const float wet_mix = 0.45f;
-const double MASTER_VOLUME = 50;
+const double MASTER_VOLUME = 40;
 double BUBBLE_RATE_HZ = 1.0;
 double DROPLET_SIZE_MIN = 0.000010;
 double DROPLET_SIZE_MAX = 0.00025;
@@ -525,7 +525,10 @@ trigger_droplet ()
 }
 
 
-
+void* loop_x(void* arg) {
+  
+  return NULL;
+}
 
 // Function for the first while loop
 void* loop_one(void* arg) {
@@ -540,9 +543,9 @@ if (snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
     }
     snd_pcm_set_params(pcm, SND_PCM_FORMAT_FLOAT_LE, SND_PCM_ACCESS_RW_INTERLEAVED, 2, SAMPLE_RATE, 1, 50000);
     
-    float buf[BUFFER_SIZE * 2];
- 
-    printf("💧 Infinite Liquid Space Active... Press Enter to terminate.\n");
+    float buf[BUFFER_SIZEX * 2];
+    
+    printf("💧 Infinite Liquid Space Active...\n");
     
     int spawn_threshold = (int)(15.0f / FLUID_SPEED);
     if (spawn_threshold < 2) spawn_threshold = 2;
@@ -551,14 +554,14 @@ if (snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
         if (rand() % spawn_threshold == 0) { 
             float random_pan = (float)rand() / (float)RAND_MAX;
             float random_energy = 0.6f + (((float)rand() / (float)RAND_MAX) * 0.4f);
-            trigger_crystal(random_energy, random_pan);
+            trigger_crystal(random_energy, random_pan); 
         }
         
-        for (int i = 0; i < BUFFER_SIZE; i++) {
+        for (int i = 0; i < BUFFER_SIZEX; i++) {
             render_samples(&buf[i*2], &buf[i*2+1]);
         }
         
-        if (snd_pcm_writei(pcm, buf, BUFFER_SIZE) < 0) {
+        if (snd_pcm_writei(pcm, buf, BUFFER_SIZEX) < 0) {
             snd_pcm_prepare(pcm); 
         }
     }
@@ -602,9 +605,9 @@ void* loop_two(void* arg) {
       droplets[i].active = 0;
     }
   int16_t buffer[BUFFER_FRAMES * 2];
-  double speed_modifier = 0.5;
+  double speed_modifier = 0.6;
   double dt = (1.0 / SAMPLE_RATE / BUBBLE_RATE_HZ) * speed_modifier;
-  
+  printf ("");
   while (1)
     {
       for (int f = 0; f < BUFFER_FRAMES; f++)
@@ -673,8 +676,7 @@ void* loop_two(void* arg) {
 		  droplets[i].age += dt;
 		}
 	    }
-	  double sat_left = tanh (mixed_left) * MASTER_VOLUME * 0.03;
-	  double sat_right = tanh (mixed_right) * MASTER_VOLUME * 0.03;
+	  
 	  float history_l = reverb_buffer_l[reverb_idx];
 	  float history_r = reverb_buffer_r[reverb_idx];
 	  reverb_buffer_l[reverb_idx] = mixed_left + (history_l * feedback);
@@ -798,23 +800,18 @@ void* loop_two(void* arg) {
 	    amplified_R = 32767;
 	  if (amplified_R < -32768)
 	    amplified_R = -32768;
-	  float constant_background_roar =
-	    (((float) rand () / (float) RAND_MAX) * 2.0f) - 1.0f;
-	  constant_background_roar *= 0.03f;
+	  
 	  buffer[f * 2] =
-	    (int16_t) (((amplified_L)));
+	    (int16_t) (amplified_L);
 	  buffer[f * 2 + 1] =
-	    (int16_t) (((amplified_R)));
+	    (int16_t) (amplified_R);
 	}
 	
-      smooth_bubbles_sph (buffer, BUFFER_FRAMES, 16.0f);
-    //  blur_bubbles_engine(buffer, BUFFER_FRAMES);
+    smooth_bubbles_sph (buffer, BUFFER_FRAMES, 1.0f);
+     // blur_bubbles_engine(buffer, BUFFER_FRAMES);
       snd_pcm_sframes_t written =
 	snd_pcm_writei (pcm_handle, buffer, BUFFER_FRAMES);
-      if (written < 0)
-	{
-	  written = snd_pcm_recover (pcm_handle, written, 0);
-	}
+      
       if (written < 0)
 	{
 	  fprintf (stderr, "ERROR: Failed writing data to PCM device: %s\n",
@@ -918,13 +915,13 @@ void render_next_sample(float *out_left, float *out_right) {
 
 // Unified Sound Engine: Pass a float from 0.0 to 1.0 to set master volume level
 void run_soundscape_engine(snd_pcm_t *pcm_handle, float volume) {
-    short buffer[BUFFER_SIZE * CHANNELS];
+    short buffer[BUFFER_SIZEXZ * CHANNELS];
     int rc;
 
-    
+    printf("");
 
     while (1) {
-        for (int i = 0; i < BUFFER_SIZE; i++) {
+        for (int i = 0; i < BUFFER_SIZEXZ; i++) {
             float sample_l = 0.0f;
             float sample_r = 0.0f;
             
@@ -943,7 +940,7 @@ void run_soundscape_engine(snd_pcm_t *pcm_handle, float volume) {
             buffer[i * 2 + 1] = (short)(sample_r * 32767.0f);
         }
 
-        rc = snd_pcm_writei(pcm_handle, buffer, BUFFER_SIZE);
+        rc = snd_pcm_writei(pcm_handle, buffer, BUFFER_SIZEXZ);
         if (rc == -EPIPE) {
             snd_pcm_prepare(pcm_handle);
         } else if (rc < 0) {
@@ -986,19 +983,22 @@ void* loop_four(void* arg) {
     return 0;
 }
 int main() {
-    pthread_t thread1, thread2, thread3, thread4;
+  setpriority(PRIO_PROCESS, 0, -16); 
+    pthread_t thread1, thread2, thread3, thread4, thread5;
 
     // Create the threads and assign their functions
+    pthread_create(&thread5, NULL, loop_x, NULL);
     pthread_create(&thread1, NULL, loop_one, NULL);
-    pthread_create(&thread2, NULL, loop_two, NULL);
     pthread_create(&thread3, NULL, loop_three, NULL);
     pthread_create(&thread4, NULL, loop_four, NULL);
+    pthread_create(&thread2, NULL, loop_two, NULL);
 
 
     // Wait for the threads to finish (they run forever in this example)
+    pthread_join(thread5, NULL);
     pthread_join(thread1, NULL);
-    pthread_join(thread2, NULL);
     pthread_join(thread3, NULL);
     pthread_join(thread4, NULL);
+    pthread_join(thread2, NULL);
     return 0;
 }
