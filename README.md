@@ -3,9 +3,13 @@
 <img width="1024" height="1024" alt="1000772461" src="https://github.com/user-attachments/assets/32cea55a-7592-4731-837a-f9d73821473d" />
 <br><br>
 Audio Preview:
+
+
+[brook.wav](https://github.com/user-attachments/files/29184771/brook.wav)
+
 <br><br>
 
-[babbling_brook_fx.wav](https://github.com/user-attachments/files/29171624/babbling_brook_fx.wav)
+<img width="1408" height="768" alt="1001322465" src="https://github.com/user-attachments/assets/7544055d-2064-41de-8402-61dc877faf31" />
 
 
 <br><br>
