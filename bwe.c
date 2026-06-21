@@ -70,7 +70,7 @@ static int idx_2l = 0, idx_2r = 0;
 static int idx_3l = 0, idx_3r = 0;
 static int idx_4l = 0, idx_4r = 0;
 
-static const float FLUID_SPEEDZ = 50.0f; 
+static const float FLUID_SPEEDZ = 15.0f; 
 
 typedef struct {
     int active;
@@ -312,13 +312,13 @@ blur_bubbles_engine (int16_t *buffer, int frames)
 // ============================================================================
 // 🎛️ CORE SOUND ENGINE ENVIRONMENT VARIABLES
 // ============================================================================
-static const float FLUID_SPEED     = 5.0f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
+static const float FLUID_SPEED     = 0.1f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
 
 // Bubble Radius Bounds (in meters)
 // - Sub-millimeter sizes (e.g., 0.0002f) produce high-pitched, crystalline chimes
 // - Larger sizes (e.g., 0.005f) produce deep, hollow, dripping plop tones
 static const float BUBBLE_SIZE_MIN = 0.005f; // Minimum bubble radius cutoff
-static const float BUBBLE_SIZE_MAX = 0.05f; // Maximum bubble radius cutoff
+static const float BUBBLE_SIZE_MAX = 0.005f; // Maximum bubble radius cutoff
 // ============================================================================
 
 typedef struct {
@@ -828,11 +828,164 @@ void* loop_x(void* arg) {
     return 0;
 }
 
-// Function for the first while loop
-void* loop_one(void* arg) {
-  play_waveguide_mesh_sound();
-  return NULL;
+
+
+#define SAMPLE_RATE 44100
+#define CHUNK_SIZE 4096
+#define MAX_OVERLAPPING_SPLASHES 6
+
+// Physical & Filter Constants
+#define P0 101325.0       
+#define RHO 1000.0        
+#define GAMMA 1.4         
+#define COEFF_TABLE_SIZE 2000
+#define MIN_LOOKUP_FREQ 30.0
+#define MAX_LOOKUP_FREQ 3500.0
+
+typedef struct { double b0, b1, b2, a1, a2; } AlsaCoeffs;
+typedef struct { int active; double age, duration, target_freq, volume_scale, x1, x2, y1, y2; } AlsaSplashState;
+
+static AlsaCoeffs coeff_table[COEFF_TABLE_SIZE];
+static int coeff_table_initialized = 0;
+
+static double generate_noise() { return ((double)rand() / RAND_MAX) * 2.0 - 1.0; }
+
+// Call this once inside your master main() before spawning threads!
+void populate_coeff_table(void) {
+    double q = 0.6; 
+    for (int i = 0; i < COEFF_TABLE_SIZE; i++) {
+        double freq = MIN_LOOKUP_FREQ + ((double)i / COEFF_TABLE_SIZE) * (MAX_LOOKUP_FREQ - MIN_LOOKUP_FREQ);
+        double omega = 2.0 * M_PI * freq / SAMPLE_RATE;
+        double alpha = sin(omega) / (2.0 * q);
+        double a0 = 1.0 + alpha;
+        coeff_table[i].b0 = alpha / a0; coeff_table[i].b1 = 0.0; coeff_table[i].b2 = -alpha / a0;
+        coeff_table[i].a1 = (-2.0 * cos(omega)) / a0; coeff_table[i].a2 = (1.0 - alpha) / a0;
+    }
+    coeff_table_initialized = 1;
 }
+
+static inline void apply_lookup_filter(AlsaSplashState *s, double frequency, double in, double *out) {
+    int idx = (int)(((frequency - MIN_LOOKUP_FREQ) / (MAX_LOOKUP_FREQ - MIN_LOOKUP_FREQ)) * COEFF_TABLE_SIZE);
+    if (idx < 0) idx = 0; if (idx >= COEFF_TABLE_SIZE) idx = COEFF_TABLE_SIZE - 1;
+    AlsaCoeffs *c = &coeff_table[idx];
+    *out = c->b0 * in + c->b1 * s->x1 + c->b2 * s->x2 - c->a1 * s->y1 - c->a2 * s->y2;
+    s->x2 = s->x1; s->x1 = in; s->y2 = s->y1; s->y1 = *out;
+}
+
+// ====================================================================
+// PROCEDURAL COMPATIBLE INTERFACE: loop_one
+// ====================================================================
+void* loop_one(void* arg) {
+    (void)arg; 
+    short hardware_out_buffer[CHUNK_SIZE];
+
+    if (!coeff_table_initialized) populate_coeff_table();
+
+    double master_volume = 0.12;
+    double splash_density = 15.0;  
+    
+    AlsaSplashState splash_pool[MAX_OVERLAPPING_SPLASHES] = {0};
+    int current_active_count = 0;
+
+    snd_pcm_t *pcm_handle; snd_pcm_hw_params_t *hw_params; unsigned int rate = SAMPLE_RATE;
+    
+    if (snd_pcm_open(&pcm_handle, "default", SND_PCM_STREAM_PLAYBACK, SND_PCM_NONBLOCK) < 0) {
+        return NULL;
+    }
+
+    snd_pcm_hw_params_malloc(&hw_params); snd_pcm_hw_params_any(pcm_handle, hw_params);
+    snd_pcm_hw_params_set_access(pcm_handle, hw_params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format(pcm_handle, hw_params, SND_PCM_FORMAT_S16_LE);
+    snd_pcm_hw_params_set_channels(pcm_handle, hw_params, 1);
+    snd_pcm_hw_params_set_rate_near(pcm_handle, hw_params, &rate, 0);
+    
+    snd_pcm_uframes_t buf_sz = CHUNK_SIZE * 32; 
+    snd_pcm_hw_params_set_buffer_size_near(pcm_handle, hw_params, &buf_sz);
+    snd_pcm_hw_params(pcm_handle, hw_params); snd_pcm_hw_params_free(hw_params);
+
+    fprintf(stderr, "");
+
+    while (1) {
+        snd_pcm_sframes_t avail = snd_pcm_avail_update(pcm_handle);
+        if (avail < CHUNK_SIZE) {
+            if (avail < 0) {
+                snd_pcm_prepare(pcm_handle); 
+            }
+            usleep(4000); 
+            continue; 
+        }
+
+        double expected_spawns = (splash_density * 4.0) * ((double)CHUNK_SIZE / SAMPLE_RATE);
+        int spawns_to_trigger = (int)expected_spawns;
+        if (((double)rand() / RAND_MAX) < (expected_spawns - spawns_to_trigger)) {
+            spawns_to_trigger++;
+        }
+
+        for (int s_idx = 0; s_idx < spawns_to_trigger; s_idx++) {
+            if (current_active_count >= MAX_OVERLAPPING_SPLASHES) break; 
+            for (int v = 0; v < MAX_OVERLAPPING_SPLASHES; v++) {
+                if (!splash_pool[v].active) {
+                    splash_pool[v].active = 1; splash_pool[v].age = 0.0;
+                    current_active_count++;
+                    double random_radius = 0.0010 + (((double)rand() / RAND_MAX) * 0.0045);
+                    double omega = (1.0 / random_radius) * sqrt((3.0 * GAMMA * P0) / RHO);
+                    splash_pool[v].target_freq = (omega / (2.0 * M_PI)) * 0.35; 
+                    splash_pool[v].duration = 0.80 + (((double)rand() / RAND_MAX) * 1.20); 
+                    splash_pool[v].volume_scale = 0.3 + (((double)rand() / RAND_MAX) * 0.7);
+                    splash_pool[v].x1 = splash_pool[v].x2 = splash_pool[v].y1 = splash_pool[v].y2 = 0.0;
+                    break; 
+                }
+            }
+        }
+
+        for (int i = 0; i < CHUNK_SIZE; i++) {
+            double mixed_signal = 0.0; int rendering_voices = 0;
+            for (int v = 0; v < MAX_OVERLAPPING_SPLASHES; v++) {
+                if (splash_pool[v].active) {
+                    rendering_voices++; splash_pool[v].age += (1.0 / SAMPLE_RATE);
+                    if (splash_pool[v].age >= splash_pool[v].duration) { 
+                        splash_pool[v].active = 0; current_active_count--; continue; 
+                    }
+                    double norm = splash_pool[v].age / splash_pool[v].duration;
+                    double envelope = exp(-2.5 * norm) * (1.0 - norm);
+                    double voice_output = 0.0;
+                    apply_lookup_filter(&splash_pool[v], splash_pool[v].target_freq * (1.0 - 0.25 * norm), generate_noise(), &voice_output);
+                    mixed_signal += voice_output * envelope * splash_pool[v].volume_scale;
+                }
+            }
+            double norm_gain = (rendering_voices > 1) ? (1.5 / sqrt((double)rendering_voices)) : 1.0;
+            double final_wf = mixed_signal * norm_gain * master_volume;
+            if (final_wf > 1.0) final_wf = 1.0; if (final_wf < -1.0) final_wf = -1.0;
+            hardware_out_buffer[i] = (short)(final_wf * 32767.0);
+        }
+
+        // ====================================================================
+        // FIXED: TRANSLATED TYPE TO NATIVE ALSA SIGNED FRAMES VARIABLE
+        // ====================================================================
+        snd_pcm_sframes_t write_frames = snd_pcm_writei(pcm_handle, hardware_out_buffer, CHUNK_SIZE);
+        
+        if (write_frames < 0) {
+            if (write_frames == -EAGAIN) {
+                usleep(2000); 
+            } else {
+                snd_pcm_prepare(pcm_handle); 
+            }
+        } else if (write_frames < CHUNK_SIZE) {
+            usleep(2000);
+        } else {
+            usleep(4000);
+        }
+    }
+    
+    snd_pcm_close(pcm_handle);
+    return NULL;
+}
+
+// ====================================================================
+// EXAMPLE MAIN WRAPPER 
+// Demonstrates how to spawn loop_one alongside other background tasks
+// ====================================================================
+
 
 void* loop_three(void* arg) {
 if (snd_pcm_open(&pcm, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
