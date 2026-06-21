@@ -34,13 +34,13 @@ static int blur_initializedx = 0;
 
 
 
-
+#define BUFFER_SIZE 512
 #define SAMPLE_RATE 44100
 #define CHANNELS 2          
-#define BUFFER_SIZEX 256  // midtones loop3
-#define BUFFER_SIZEXZ 4096 // crystalline loop4
+#define BUFFER_SIZEX 512  // midtones loop3
+#define BUFFER_SIZEXZ 512 // crystalline loop4
 #define MAX_BUBBLES 128
-
+#define MAX_BUBBLESZ 128
 static const float C_SPEED = 0.15f;        
 static const float DAMPING = 0.992f;  
 
@@ -48,6 +48,156 @@ static float grid1[GRID_SIZE][GRID_SIZE];
 static float grid2[GRID_SIZE][GRID_SIZE];
 static float (*current_grid)[GRID_SIZE] = NULL;
 static float (*previous_grid)[GRID_SIZE] = NULL;
+
+// --- 4-STAGE STEREO DIFFUSER CASCADE MEMORY ---
+// Prime numbers ensure frequencies don't phase-cancel cleanly, creating a rich blur
+#define STAGE1_L 149
+#define STAGE1_R 173
+#define STAGE2_L 331
+#define STAGE2_R 379
+#define STAGE3_L 563
+#define STAGE3_R 617
+#define STAGE4_L 827
+#define STAGE4_R 911
+
+static float buf_1l[STAGE1_L], buf_1r[STAGE1_R];
+static float buf_2l[STAGE2_L], buf_2r[STAGE2_R];
+static float buf_3l[STAGE3_L], buf_3r[STAGE3_R];
+static float buf_4l[STAGE4_L], buf_4r[STAGE4_R];
+
+static int idx_1l = 0, idx_1r = 0;
+static int idx_2l = 0, idx_2r = 0;
+static int idx_3l = 0, idx_3r = 0;
+static int idx_4l = 0, idx_4r = 0;
+
+static const float FLUID_SPEEDZ = 50.0f; 
+
+typedef struct {
+    int active;
+    float phase;
+    float amp;
+    float decay;
+    float pan;
+    float base_radius;
+    float age;
+} CrystalBubblez;
+
+static CrystalBubblez pools[MAX_BUBBLES];
+static int active_indices[MAX_BUBBLES];
+static int active_count = 0;
+static snd_pcm_t *pcmz;
+
+float minnaert_freqz(float r) {
+    if (r < 0.0001f) return 20000.0f;
+    return 3.0f / r; 
+}
+
+void trigger_crystalx(float energy, float pan) {
+    if (active_count >= MAX_BUBBLES) return;
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (!pools[i].active) {
+            pools[i].active = 1;
+            pools[i].phase = 0.0f;
+            pools[i].age = 0.0f;
+            pools[i].pan = pan;
+            
+            float r0 = 0.0006f + (((float)rand() / (float)RAND_MAX) * 0.015f);
+            pools[i].base_radius = r0;
+            
+            pools[i].amp = energy * 0.04f; 
+            pools[i].decay = 4.0f + (((float)rand() / (float)RAND_MAX) * 8.0f);
+            
+            active_indices[active_count] = i;
+            active_count++;
+            break;
+        }
+    }
+}
+
+// Highly intensive smudging function running 4 cascaded phase diffusers per channel
+void apply_extreme_water_blur(float *l, float *r) {
+    // Diffusion coefficient: 0.61f hits the sweet spot for heavy smearing without ringing metallic resonances
+    float k = 0.61f; 
+    float in_l = *l;
+    float in_r = *r;
+    float out, old;
+
+    // --- LEFT CHANNEL CASCADE ---
+    // Stage 1
+    old = buf_1l[idx_1l]; out = -k * in_l + old; buf_1l[idx_1l] = in_l + k * out;
+    idx_1l = (idx_1l + 1) % STAGE1_L; in_l = out;
+    // Stage 2
+    old = buf_2l[idx_2l]; out = -k * in_l + old; buf_2l[idx_2l] = in_l + k * out;
+    idx_2l = (idx_2l + 1) % STAGE2_L; in_l = out;
+    // Stage 3
+    old = buf_3l[idx_3l]; out = -k * in_l + old; buf_3l[idx_3l] = in_l + k * out;
+    idx_3l = (idx_3l + 1) % STAGE3_L; in_l = out;
+    // Stage 4
+    old = buf_4l[idx_4l]; out = -k * in_l + old; buf_4l[idx_4l] = in_l + k * out;
+    idx_4l = (idx_4l + 1) % STAGE4_L; *l = out;
+
+    // --- RIGHT CHANNEL CASCADE ---
+    // Stage 1
+    old = buf_1r[idx_1r]; out = -k * in_r + old; buf_1r[idx_1r] = in_r + k * out;
+    idx_1r = (idx_1r + 1) % STAGE1_R; in_r = out;
+    // Stage 2
+    old = buf_2r[idx_2r]; out = -k * in_r + old; buf_2r[idx_2r] = in_r + k * out;
+    idx_2r = (idx_2r + 1) % STAGE2_R; in_r = out;
+    // Stage 3
+    old = buf_3r[idx_3r]; out = -k * in_r + old; buf_3r[idx_3r] = in_r + k * out;
+    idx_3r = (idx_3r + 1) % STAGE3_R; in_r = out;
+    // Stage 4
+    old = buf_4r[idx_4r]; out = -k * in_r + old; buf_4r[idx_4r] = in_r + k * out;
+    idx_4r = (idx_4r + 1) % STAGE4_R; *r = out;
+}
+
+void render_samplesz(float *l, float *r) {
+    *l = 0.0f;
+    *r = 0.0f;
+
+    for (int a = 0; a < active_count; a++) {
+        int i = active_indices[a];
+
+        pools[i].age += (1.0f / (float)SAMPLE_RATE) * FLUID_SPEEDZ;
+        float current_radius = pools[i].base_radius - (pools[i].age * 0.0015f);
+        float current_freq = minnaert_freqz(current_radius);
+        pools[i].amp *= expf(-pools[i].decay * (1.0f / (float)SAMPLE_RATE));
+
+        if (pools[i].amp < 0.0001f || current_freq > 19000.0f || current_radius <= 0.0001f) {
+            pools[i].active = 0;
+            active_indices[a] = active_indices[active_count - 1];
+            active_count--;
+            a--; 
+            continue;
+        }
+
+        float delta = (2.0f * M_PI * current_freq) / (float)SAMPLE_RATE;
+        pools[i].phase += delta;
+        if (pools[i].phase > 2.0f * M_PI) pools[i].phase -= 2.0f * M_PI;
+
+        float sample = sinf(pools[i].phase) * pools[i].amp;
+
+        if (current_freq > 17500.0f) {
+            float click_fade = (19000.0f - current_freq) / 1500.0f;
+            sample *= (click_fade < 0.0f ? 0.0f : click_fade);
+        }
+
+        *l += sample * (1.0f - pools[i].pan);
+        *r += sample * pools[i].pan;
+    }
+
+    if (active_count > 1) {
+        float dynamic_scaler = 1.8f / sqrtf((float)active_count);
+        if (dynamic_scaler < 1.0f) {
+            *l *= dynamic_scaler;
+            *r *= dynamic_scaler;
+        }
+    }
+
+    *l = tanhf(*l);
+    *r = tanhf(*r);
+}
+
 
 
 static const int BLUR_DELAYS[METALLIC_FIX_STAGES] =
@@ -161,12 +311,12 @@ blur_bubbles_engine (int16_t *buffer, int frames)
 // ============================================================================
 // 🎛️ CORE SOUND ENGINE ENVIRONMENT VARIABLES
 // ============================================================================
-static const float FLUID_SPEED     = 10.0f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
+static const float FLUID_SPEED     = 5.0f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
 
 // Bubble Radius Bounds (in meters)
 // - Sub-millimeter sizes (e.g., 0.0002f) produce high-pitched, crystalline chimes
 // - Larger sizes (e.g., 0.005f) produce deep, hollow, dripping plop tones
-static const float BUBBLE_SIZE_MIN = 0.0005f; // Minimum bubble radius cutoff
+static const float BUBBLE_SIZE_MIN = 0.005f; // Minimum bubble radius cutoff
 static const float BUBBLE_SIZE_MAX = 0.05f; // Maximum bubble radius cutoff
 // ============================================================================
 
@@ -525,9 +675,156 @@ trigger_droplet ()
 }
 
 
+
+typedef struct {
+    int active;
+    float frequency;
+    float phase;
+    float amplitude;
+    float decay;
+    float pan; 
+} Bubblezzz;
+
+static Bubblezzz bubble_poolz[MAX_BUBBLES];
+
+void init_gridzzz(void) {
+    for (int i = 0; i < GRID_SIZE; i++) {
+        for (int j = 0; j < GRID_SIZE; j++) {
+            grid1[i][j] = 0.0f;
+            grid2[i][j] = 0.0f;
+        }
+    }
+    current_grid = &grid1;
+    previous_grid = &grid2;
+
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        bubble_poolz[i].active = 0;
+    }
+}
+
+void trigger_minnaert_bubblezzz(float grid_energy, int x, int y) {
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (!bubble_poolz[i].active) {
+            float radius = 0.0005f + ((1.0f - grid_energy) * 0.003f); 
+            bubble_poolz[i].active = 1;
+            bubble_poolz[i].frequency = 3.26f / radius;
+            bubble_poolz[i].phase = 0.0f;
+            bubble_poolz[i].amplitude = grid_energy * 0.15f;
+            bubble_poolz[i].decay = expf(-0.04f * bubble_poolz[i].frequency / SAMPLE_RATE); 
+            bubble_poolz[i].pan = (float)x / (float)GRID_SIZE; 
+            break;
+        }
+    }
+}
+
+void render_next_samplezzz(float *out_left, float *out_right) {
+    if ((rand() % 1000) < 15) { 
+        int cx = 5 + rand() % (GRID_SIZE - 10);
+        int cy = 5 + rand() % (GRID_SIZE - 10);
+        current_grid[cx][cy] += 0.4f + ((float)rand() / (float)RAND_MAX) * 0.6f;
+    }
+
+    for (int i = 1; i < GRID_SIZE - 1; i++) {
+        for (int j = 1; j < GRID_SIZE - 1; j++) {
+            float neighbors = previous_grid[i-1][j] + previous_grid[i+1][j] + 
+                              previous_grid[i][j-1] + previous_grid[i][j+1];
+            float next_val = (neighbors * C_SPEED) + (previous_grid[i][j] * (2.0f - 4.0f * C_SPEED)) - current_grid[i][j];
+            next_val *= DAMPING;
+
+            float velocity = fabsf(next_val - current_grid[i][j]);
+            if (velocity > 0.15f && (rand() % 100) < 5) {
+                trigger_minnaert_bubblezzz(velocity > 1.0f ? 1.0f : velocity, i, j);
+            }
+            current_grid[i][j] = next_val;
+        }
+    }
+
+    float (*tmp)[GRID_SIZE] = current_grid;
+    current_grid = previous_grid;
+    previous_grid = tmp;
+
+    *out_left = 0.0f;
+    *out_right = 0.0f;
+    for (int i = 0; i < MAX_BUBBLES; i++) {
+        if (bubble_poolz[i].active) {
+            float wave = sinf(bubble_poolz[i].phase) * bubble_poolz[i].amplitude;
+            *out_left  += wave * (1.0f - bubble_poolz[i].pan);
+            *out_right += wave * bubble_poolz[i].pan;
+            bubble_poolz[i].phase += 2.0f * (float)M_PI * bubble_poolz[i].frequency / SAMPLE_RATE;
+            bubble_poolz[i].amplitude *= bubble_poolz[i].decay;
+            if (bubble_poolz[i].amplitude < 0.001f) bubble_poolz[i].active = 0;
+        }
+    }
+}
+
+// Unified Sound Engine: Pass a float from 0.0 to 1.0 to set master volume level
+void run_soundscape_enginezzz(snd_pcm_t *pcm_handle, float volume) {
+    short buffer[BUFFER_SIZE * CHANNELS];
+    int rc;
+
+    printf("");
+
+    while (1) {
+        for (int i = 0; i < BUFFER_SIZE; i++) {
+            float sample_l = 0.0f;
+            float sample_r = 0.0f;
+            
+            render_next_samplezzz(&sample_l, &sample_r);
+
+            // Apply the volume attenuation scaling variable
+            sample_l *= volume;
+            sample_r *= volume;
+
+            if (sample_l > 1.0f)  sample_l = 1.0f;
+            if (sample_l < -1.0f) sample_l = -1.0f;
+            if (sample_r > 1.0f)  sample_r = 1.0f;
+            if (sample_r < -1.0f) sample_r = -1.0f;
+
+            buffer[i * 2]     = (short)(sample_l * 32767.0f);
+            buffer[i * 2 + 1] = (short)(sample_r * 32767.0f);
+        }
+
+        rc = snd_pcm_writei(pcm_handle, buffer, BUFFER_SIZE);
+        if (rc == -EPIPE) {
+            snd_pcm_prepare(pcm_handle);
+        } else if (rc < 0) {
+            fprintf(stderr, "Error writing to PCM device: %s\n", snd_strerror(rc));
+        }
+    }
+}
 void* loop_x(void* arg) {
-  
-  return NULL;
+ snd_pcm_t *pcm_handle;
+    snd_pcm_hw_params_t *params;
+    int rc;
+
+    init_gridzzz();
+
+    rc = snd_pcm_open(&pcm_handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
+    if (rc < 0) {
+        fprintf(stderr, "Cannot open PCM device: %s\n", snd_strerror(rc));
+        return 0;
+    }
+
+    snd_pcm_hw_params_alloca(&params);
+    snd_pcm_hw_params_any(pcm_handle, params);
+    snd_pcm_hw_params_set_access(pcm_handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
+    snd_pcm_hw_params_set_format(pcm_handle, params, SND_PCM_FORMAT_S16_LE);
+    snd_pcm_hw_params_set_channels(pcm_handle, params, CHANNELS);
+    unsigned int val = SAMPLE_RATE;
+    snd_pcm_hw_params_set_rate_near(pcm_handle, params, &val, 0);
+
+    rc = snd_pcm_hw_params(pcm_handle, params);
+    if (rc < 0) {
+        fprintf(stderr, "Cannot set HW parameters: %s\n", snd_strerror(rc));
+        return 0;
+    }
+
+    // --- EXACTLY ONE FUNCTION CALL IN MAIN WITH THE VOLUME ARGUEMENT (0.25f = 25% Volume) ---
+    run_soundscape_enginezzz(pcm_handle, 0.25f);
+
+    snd_pcm_drain(pcm_handle);
+    snd_pcm_close(pcm_handle);
+    return 0;
 }
 
 // Function for the first while loop
@@ -949,42 +1246,53 @@ void run_soundscape_engine(snd_pcm_t *pcm_handle, float volume) {
     }
 }
 void* loop_four(void* arg) {
-   snd_pcm_t *pcm_handle;
-    snd_pcm_hw_params_t *params;
-    int rc;
+  
+srand(time(NULL));
 
-    init_grid();
-
-    rc = snd_pcm_open(&pcm_handle, "default", SND_PCM_STREAM_PLAYBACK, 0);
-    if (rc < 0) {
-        fprintf(stderr, "Cannot open PCM device: %s\n", snd_strerror(rc));
+    if (snd_pcm_open(&pcmz, "default", SND_PCM_STREAM_PLAYBACK, 0) < 0) {
+        fprintf(stderr, "Error opening ALSA PCM.\n");
         return 0;
     }
 
-    snd_pcm_hw_params_alloca(&params);
-    snd_pcm_hw_params_any(pcm_handle, params);
-    snd_pcm_hw_params_set_access(pcm_handle, params, SND_PCM_ACCESS_RW_INTERLEAVED);
-    snd_pcm_hw_params_set_format(pcm_handle, params, SND_PCM_FORMAT_S16_LE);
-    snd_pcm_hw_params_set_channels(pcm_handle, params, CHANNELS);
-    unsigned int val = SAMPLE_RATE;
-    snd_pcm_hw_params_set_rate_near(pcm_handle, params, &val, 0);
+    snd_pcm_set_params(pcmz, SND_PCM_FORMAT_FLOAT_LE, SND_PCM_ACCESS_RW_INTERLEAVED, CHANNELS, SAMPLE_RATE, 1, 80000);
 
-    rc = snd_pcm_hw_params(pcm_handle, params);
-    if (rc < 0) {
-        fprintf(stderr, "Cannot set HW parameters: %s\n", snd_strerror(rc));
-        return 0;
+    // Initialize all buffers explicitly to zero
+    memset(pools, 0, sizeof(pools));
+    memset(buf_1l, 0, sizeof(buf_1l)); memset(buf_1r, 0, sizeof(buf_1r));
+    memset(buf_2l, 0, sizeof(buf_2l)); memset(buf_2r, 0, sizeof(buf_2r));
+    memset(buf_3l, 0, sizeof(buf_3l)); memset(buf_3r, 0, sizeof(buf_3r));
+    memset(buf_4l, 0, sizeof(buf_4l)); memset(buf_4r, 0, sizeof(buf_4r));
+
+    float buf[BUFFER_SIZE * 2];
+
+    while (1) {
+        for (int i = 0; i < BUFFER_SIZE; i++) {
+            // High probability spawning (16% chance per sample) to build extreme water density
+            if ((rand() % 100) < 16) { 
+                float random_pan = (float)rand() / (float)RAND_MAX;
+                float random_energy = 0.3f + (((float)rand() / (float)RAND_MAX) * 0.7f);
+                trigger_crystalx(random_energy, random_pan);
+            }
+
+            render_samplesz(&buf[i * 2], &buf[i * 2 + 1]);
+            apply_extreme_water_blur(&buf[i * 2], &buf[i * 2 + 1]);
+        }
+
+        snd_pcm_sframes_t frames = snd_pcm_writei(pcmz, buf, BUFFER_SIZE);
+        if (frames < 0) {
+            snd_pcm_prepare(pcmz);
+        }
     }
 
-    // --- EXACTLY ONE FUNCTION CALL IN MAIN WITH THE VOLUME ARGUEMENT (0.25f = 25% Volume) ---
-    run_soundscape_engine(pcm_handle, 0.25f);
-
-    snd_pcm_drain(pcm_handle);
-    snd_pcm_close(pcm_handle);
-    return 0;
+    snd_pcm_close(pcmz);
+    return 0; 
+  
+  
+  
 }
 int main() {
   setpriority(PRIO_PROCESS, 0, -16); 
-    pthread_t thread1, thread2, thread3, thread4, thread5;
+    pthread_t thread1, thread2, thread3,thread5, thread4;
 
     // Create the threads and assign their functions
     pthread_create(&thread5, NULL, loop_x, NULL);
