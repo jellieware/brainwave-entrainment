@@ -102,10 +102,10 @@ void trigger_crystalx(float energy, float pan) {
             pools[i].pan = pan;
             
             float r0 = 0.0006f + (((float)rand() / (float)RAND_MAX) * 0.015f);
-            pools[i].base_radius = r0;
-            
-            pools[i].amp = energy * 0.04f; 
-            pools[i].decay = 4.0f + (((float)rand() / (float)RAND_MAX) * 8.0f);
+            pools[i].base_radius = 0.0002f + (((float)rand() / (float)RAND_MAX) * 0.0038f);
+            pools[i].amp = energy * 0.06f;
+            // Faster decay for "popping" sound
+            pools[i].decay = 25.0f + (((float)rand() / (float)RAND_MAX) * 40.0f);
             
             active_indices[active_count] = i;
             active_count++;
@@ -159,7 +159,7 @@ void render_samplesz(float *l, float *r) {
         int i = active_indices[a];
 
         pools[i].age += (1.0f / (float)SAMPLE_RATE) * FLUID_SPEEDZ;
-        float current_radius = pools[i].base_radius - (pools[i].age * 0.0015f);
+        float current_radius = pools[i].base_radius - (pools[i].age * 0.0085f);
         float current_freq = minnaert_freqz(current_radius);
         pools[i].amp *= expf(-pools[i].decay * (1.0f / (float)SAMPLE_RATE));
 
@@ -193,7 +193,8 @@ void render_samplesz(float *l, float *r) {
             *r *= dynamic_scaler;
         }
     }
-
+* l *= 0.5f; // Scale left channel to 50% volume
+* r *= 0.5f; // Scale right channel to 50% 
     *l = tanhf(*l);
     *r = tanhf(*r);
 }
@@ -1268,7 +1269,7 @@ srand(time(NULL));
     while (1) {
         for (int i = 0; i < BUFFER_SIZE; i++) {
             // High probability spawning (16% chance per sample) to build extreme water density
-            if ((rand() % 100) < 16) { 
+            if ((rand() % 100) < 35) {
                 float random_pan = (float)rand() / (float)RAND_MAX;
                 float random_energy = 0.3f + (((float)rand() / (float)RAND_MAX) * 0.7f);
                 trigger_crystalx(random_energy, random_pan);
