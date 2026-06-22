@@ -618,7 +618,7 @@ int reverb_idx = 0;
 const float feedback = 0.1f;
 const float dry_mix = 0.65f;
 const float wet_mix = 0.45f;
-const double MASTER_VOLUME = 15;
+const double MASTER_VOLUME = 45;
 double BUBBLE_RATE_HZ = 1.0;
 double DROPLET_SIZE_MIN = 0.000010;
 double DROPLET_SIZE_MAX = 0.00025;
@@ -867,9 +867,16 @@ void spawn_bounded_bubble(float volume, float speed, float min_radius, float max
             float a = target_radius * speed_compression;
             if (a < 0.0001f) a = 0.0001f; 
 
-            float freq = (1.0f / (2.0f * M_PI * a)) * sqrtf((3.0f * gamma * p_A) / rho);
-            bubble_poolyyy[i].minnaert_freq = freq + (((float)rand() / RAND_MAX) * 300.0f - 150.0f);
-            if (bubble_poolyyy[i].minnaert_freq < 50.0f) bubble_poolyyy[i].minnaert_freq = 50.0f;
+         //   float freq = (1.0f / (2.0f * M_PI * a)) * sqrtf((3.0f * gamma * p_A) / rho);
+        //    bubble_poolyyy[i].minnaert_freq = freq + (((float)rand() / RAND_MAX) * 300.0f - 150.0f);
+         
+         float freq = ( 1.0f / ( 2.0f * M_PI * a)) * sqrtf(( 3.0f * gamma * p_A) / rho);
+            bubble_poolyyy[ i]. minnaert_freq = freq + ((( float) rand() / RAND_MAX) * 300.0f - 150.0f);
+            
+            // 1. Raise the physical frequency floor to step out of subwoofer range
+            if ( bubble_poolyyy[ i]. minnaert_freq < 150.0f) bubble_poolyyy[ i]. minnaert_freq = 150.0f;
+
+          //  if (bubble_poolyyy[i].minnaert_freq < 50.0f) bubble_poolyyy[i].minnaert_freq = 50.0f;
 
             bubble_poolyyy[i].active = 1;
             bubble_poolyyy[i].current_time = 0.0f;
@@ -881,7 +888,17 @@ void spawn_bounded_bubble(float volume, float speed, float min_radius, float max
             bubble_poolyyy[i].sample_delay = rand() % PERIOD_SIZE;
             // Change line 59 inside spawn_bounded_bubble()
 bubble_poolyyy[ i]. amplitude = ( volume * 0.02f) * ( 0.2f + (( float) rand() / RAND_MAX) * 0.5f);
-
+float calculated_amp = ( volume * 0.05f) * ( 0.2f + (( float) rand() / RAND_MAX) * 0.8f);
+            
+            // 3. Smoothly fade the volume down for any bubble whose frequency sits below 350 Hz
+            // This leaves the signature smudge texture intact but strips away the low-end pressure waves.
+            if ( bubble_poolyyy[ i]. minnaert_freq < 350.0f) {
+                float attenuation = ( bubble_poolyyy[ i]. minnaert_freq - 150.0f) / 200.0f; 
+                if ( attenuation < 0.05f) attenuation = 0.05f; // Keep a tiny touch of texture impact
+                calculated_amp *= attenuation;
+            }
+            
+            bubble_poolyyy[ i]. amplitude = calculated_amp;
             break;
         }
     }
