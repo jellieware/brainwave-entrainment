@@ -618,7 +618,7 @@ int reverb_idx = 0;
 const float feedback = 0.1f;
 const float dry_mix = 0.65f;
 const float wet_mix = 0.45f;
-const double MASTER_VOLUME = 40;
+const double MASTER_VOLUME = 15;
 double BUBBLE_RATE_HZ = 1.0;
 double DROPLET_SIZE_MIN = 0.000010;
 double DROPLET_SIZE_MAX = 0.00025;
@@ -879,7 +879,9 @@ void spawn_bounded_bubble(float volume, float speed, float min_radius, float max
             bubble_poolyyy[i].pitch_drift = (0.6f + ((float)rand() / RAND_MAX) * 1.2f) * (1.0f / (size_factor + 0.2f));
             
             bubble_poolyyy[i].sample_delay = rand() % PERIOD_SIZE;
-            bubble_poolyyy[i].amplitude = (volume * 0.05f) * (0.2f + ((float)rand() / RAND_MAX) * 0.8f);
+            // Change line 59 inside spawn_bounded_bubble()
+bubble_poolyyy[ i]. amplitude = ( volume * 0.02f) * ( 0.2f + (( float) rand() / RAND_MAX) * 0.5f);
+
             break;
         }
     }
@@ -887,32 +889,54 @@ void spawn_bounded_bubble(float volume, float speed, float min_radius, float max
 
 void generate_audio_frame(float *buffer, int num_samples, float volume, int num_splashes, float speed, float min_r, float max_r) {
     for (int i = 0; i < num_samples; i++) buffer[i] = 0.0f;
+float dt = 1.0f / 44100.0f;
+    
+    // Cascaded filtering structures
+    static float last_bubble_sample[ MAX_ACTIVE_BUBBLES] = {0.0f};
+    static float last_bubble_sample_2[ MAX_ACTIVE_BUBBLES] = {0.0f};
 
     int spawn_count = 3 + (num_splashes / 5); 
     for (int b = 0; b < spawn_count; b++) {
         spawn_bounded_bubble(volume, speed, min_r, max_r);
     }
 
-    for (int b = 0; b < MAX_ACTIVE_BUBBLES; b++) {
-        if (!bubble_poolyyy[b].active) continue;
+for ( int b = 0; b < MAX_ACTIVE_BUBBLES; b++) {
+        if ( !bubble_poolyyy[ b]. active) continue;
 
-        for (int i = 0; i < num_samples; i++) {
-            if (i < bubble_poolyyy[b].sample_delay && bubble_poolyyy[b].current_time == 0.0f) continue; 
-
-            float t = bubble_poolyyy[b].current_time;
-            float envelope = expf(-bubble_poolyyy[b].decay_rate * t);
-         //   float current_freq = bubble_poolyyy[b].minnaert_freq * (1.0f + bubble_poolyyy[b].pitch_drift * t);
-            float current_freq = (bubble_poolyyy[ b]. minnaert_freq * ( 1.0f + bubble_poolyyy[ b]. pitch_drift * t)) * 0.7f;
-            buffer[i] += sinf(2.0f * M_PI * current_freq * t) * envelope * bubble_poolyyy[b].amplitude;
-            bubble_poolyyy[b].current_time += 1.0f / SAMPLE_RATE;
+        for ( int i = 0; i < num_samples; i++) {
+            float t = bubble_poolyyy[ b]. current_time;
+            float envelope = expf(- bubble_poolyyy[ b]. decay_rate * t);
+            float current_freq = bubble_poolyyy[ b]. minnaert_freq * ( 1.0f + bubble_poolyyy[ b]. pitch_drift * t);
             
-            if (envelope < 0.0002f) {
-                bubble_poolyyy[b].active = 0;
-                break;
+            // 1. Calculate raw bubble waveform
+            float raw_sample = sinf( 2.0f * M_PI * current_freq * t) * envelope * bubble_poolyyy[ b]. amplitude;
+
+            // 2. Continuous smudge filtering layer
+            float alpha = 0.05f; 
+            
+            float stage1 = ( alpha * raw_sample) + (( 1.0f - alpha) * last_bubble_sample[ b]);
+            last_bubble_sample[ b] = stage1;
+            
+            float smudged_sample = ( alpha * stage1) + (( 1.0f - alpha) * last_bubble_sample_2[ b]);
+            last_bubble_sample_2[ b] = smudged_sample;
+
+            // 3. Accumulate to the target streaming buffer
+            float bubble_gain = 5.5f; 
+            
+            // 3. Accumulate to the target streaming buffer with gain applied
+            buffer[ i] += smudged_sample * bubble_gain;
+
+            bubble_poolyyy[ b]. current_time += dt;
+            
+            // FIXED: Removed the break statement that was corrupting frame bounds
+            if ( envelope < 0.001f) {
+                bubble_poolyyy[ b]. active = 0;
+                last_bubble_sample[ b] = 0.0f;
+                last_bubble_sample_2[ b] = 0.0f;
             }
         }
-        bubble_poolyyy[b].sample_delay = 0;
     }
+
 
     for (int i = 0; i < num_samples; i++) {
        // buffer[i] += generate_roaring_fluid_noise(global_time) * volume;
