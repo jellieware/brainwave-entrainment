@@ -670,7 +670,7 @@ void trigger_droplet() {
       droplets[i].amplitude =
           rand_double(0.3, 0.7) * (1.0 / (double)NUM_DROPLETS);
       droplets[i].sweep_start =
-          rand_double(50, 200.0) * size_factor + micro_drift;
+          rand_double(50, 150.0) * size_factor + micro_drift;
       droplets[i].sweep_end =
           droplets[i].sweep_start + rand_double(2000, 16500.0) * size_factor;
       droplets[i].sweep_range = droplets[i].sweep_end - droplets[i].sweep_start;
