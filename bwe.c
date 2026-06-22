@@ -312,13 +312,13 @@ blur_bubbles_engine (int16_t *buffer, int frames)
 // ============================================================================
 // 🎛️ CORE SOUND ENGINE ENVIRONMENT VARIABLES
 // ============================================================================
-static const float FLUID_SPEED     = 0.1f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
+static const float FLUID_SPEED     = 1.0f;    // Flow rate multiplier (0.1f = slow, 3.0f = rapid)
 
 // Bubble Radius Bounds (in meters)
 // - Sub-millimeter sizes (e.g., 0.0002f) produce high-pitched, crystalline chimes
 // - Larger sizes (e.g., 0.005f) produce deep, hollow, dripping plop tones
-static const float BUBBLE_SIZE_MIN = 0.005f; // Minimum bubble radius cutoff
-static const float BUBBLE_SIZE_MAX = 0.005f; // Maximum bubble radius cutoff
+static const float BUBBLE_SIZE_MIN = 0.001f; // Minimum bubble radius cutoff
+static const float BUBBLE_SIZE_MAX = 0.029f; // Maximum bubble radius cutoff
 // ============================================================================
 
 typedef struct {
@@ -901,8 +901,8 @@ void generate_audio_frame(float *buffer, int num_samples, float volume, int num_
 
             float t = bubble_poolyyy[b].current_time;
             float envelope = expf(-bubble_poolyyy[b].decay_rate * t);
-            float current_freq = bubble_poolyyy[b].minnaert_freq * (1.0f + bubble_poolyyy[b].pitch_drift * t);
-            
+         //   float current_freq = bubble_poolyyy[b].minnaert_freq * (1.0f + bubble_poolyyy[b].pitch_drift * t);
+            float current_freq = (bubble_poolyyy[ b]. minnaert_freq * ( 1.0f + bubble_poolyyy[ b]. pitch_drift * t)) * 0.7f;
             buffer[i] += sinf(2.0f * M_PI * current_freq * t) * envelope * bubble_poolyyy[b].amplitude;
             bubble_poolyyy[b].current_time += 1.0f / SAMPLE_RATE;
             
@@ -915,7 +915,7 @@ void generate_audio_frame(float *buffer, int num_samples, float volume, int num_
     }
 
     for (int i = 0; i < num_samples; i++) {
-        buffer[i] += generate_roaring_fluid_noise(global_time) * volume;
+       // buffer[i] += generate_roaring_fluid_noise(global_time) * volume;
         global_time += 1.0f / SAMPLE_RATE;
 
         if (buffer[i] > 1.0f)  buffer[i] = 1.0f;
@@ -1455,23 +1455,23 @@ srand(time(NULL));
 }
 int main() {
   setpriority(PRIO_PROCESS, 0, -16); 
-    pthread_t thread1, thread3, thread5, thread2;
-
-    // Create the threads and assign their functions
+    pthread_t thread2, thread1;
     pthread_create(&thread2, NULL, loop_two, NULL);
-    pthread_create(&thread5, NULL, loop_x, NULL);
+    // Create the threads and assign their functions
+ //   pthread_create(&thread2, NULL, loop_two, NULL);
+ //   pthread_create(&thread5, NULL, loop_x, NULL);
     pthread_create(&thread1, NULL, loop_one, NULL);
-    pthread_create(&thread3, NULL, loop_three, NULL);
-  //  pthread_create(&thread4, NULL, loop_four, NULL);
+//    pthread_create(&thread3, NULL, loop_three, NULL);
+  //  
    // 
 
-
+      pthread_join(thread2, NULL);
     // Wait for the threads to finish (they run forever in this example
-    pthread_join(thread2, NULL);
-    pthread_join(thread5, NULL);
-    pthread_join(thread1, NULL);
-    pthread_join(thread3, NULL);
-   // pthread_join(thread4, NULL);
+ //   pthread_join(thread2, NULL); // bubbles
+ //   pthread_join(thread5, NULL); // trickles
+    pthread_join(thread1, NULL); // trickles
+  //  pthread_join(thread3, NULL); // water stream
+
    // 
     return 0;
 }
