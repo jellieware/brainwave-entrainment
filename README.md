@@ -1,6 +1,4 @@
 # brainwave-entrainment
-
-<img width="1024" height="1024" alt="1000772461" src="https://github.com/user-attachments/assets/32cea55a-7592-4731-837a-f9d73821473d" />
 <br><br>
 <img width="540" height="304" alt="1001322509" src="https://github.com/user-attachments/assets/8e5f3b6a-682c-4e30-bf32-12a02ddc7243" />
 <br><br>
@@ -21,3 +19,5 @@ sudo apt install libasound2-dev
 This program was created for relaxation/entertainment purposes.
 <br><br>
 Thank you!
+<br><br>
+<img width="1024" height="1024" alt="1000772461" src="https://github.com/user-attachments/assets/32cea55a-7592-4731-837a-f9d73821473d" />
