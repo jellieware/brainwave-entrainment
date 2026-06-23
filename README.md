@@ -16,7 +16,7 @@
 
 
 <br><br>
-This program will generate a synthetic soundscape with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
+This program will generate a synthetic babbling brook with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
 This program is based on "Minnaert's formula", "Dillon Baston" and "Van Den Doel" algorithms
 <br><br>
