@@ -26,4 +26,4 @@ This program was created for relaxation/entertainment purposes.
 <br><br>
 Thank you!
 <br><br>
-<img width="1024" height="1024" alt="1000772461" src="https://github.com/user-attachments/assets/32cea55a-7592-4731-837a-f9d73821473d" />
+<img width="500" height="500" alt="1001322599" src="https://github.com/user-attachments/assets/ba6cb51e-282e-4c52-a2a6-18fd0ad1dd53" />
