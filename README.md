@@ -8,6 +8,8 @@ https://github.com/user-attachments/assets/eddeb2de-5bff-4a68-b241-72da6fc4a8a5
 <br><br>
 <img width="1408" height="768" alt="1001322465" src="https://github.com/user-attachments/assets/7544055d-2064-41de-8402-61dc877faf31" />
 <br><br>
+<img width="1584" height="672" alt="1001322587" src="https://github.com/user-attachments/assets/461c45ae-eef8-41dc-86be-17a093bc37a1" />
+<br><br>
 This program will generate a synthetic babbling brook with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
 This program is based on "Minnaert's formula", "Dillon Baston" and "Van Den Doel" algorithms
