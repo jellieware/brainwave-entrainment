@@ -1136,11 +1136,17 @@ void generate_audio_frame(float *buffer, int num_samples, float volume,
 
 
   }
+    // Cutoff frequency fc ≈ 12000 Hz. (Shaves off the "air" and shrill frequencies)
+    static float last_filter_out = 0.0f;
+// filter_alpha = 0.63f targets roughly 12kHz to 13kHz cutoff at 44.1kHz sample rate.
+float filter_alpha = 0.30f; 
 
   for (int i = 0; i < num_samples; i++) {
     // buffer[i] += generate_roaring_fluid_noise(global_time) * volume;
     global_time += 1.0f / SAMPLE_RATE;
-
+    float filtered_sample = ( filter_alpha * buffer[ i]) + (( 1.0f - filter_alpha) * last_filter_out);
+    last_filter_out = filtered_sample;
+    buffer[ i] = filtered_sample;
     if (buffer[i] > 1.0f)
       buffer[i] = 1.0f;
     else if (buffer[i] < -1.0f)
@@ -1166,8 +1172,8 @@ void *loop_one(void *arg) {
   float min_splash_radius = 0.0019f;
   float max_splash_radius = 0.090f;
   float volume_var = 0.75f;
-  int number_splashes_var = 90;
-  float speed_var = 3.5f;
+  int number_splashes_var = 200;
+  float speed_var = 2.0f;
 
   printf("");
 
