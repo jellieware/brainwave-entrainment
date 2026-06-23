@@ -1,5 +1,9 @@
 # brainwave-entrainment
 <br>
+<audio controls>
+  <source src="audio.wav" type="audio/mpeg">
+</audio>
+<br><br>
 <img width="540" height="304" alt="1001322509" src="https://github.com/user-attachments/assets/8e5f3b6a-682c-4e30-bf32-12a02ddc7243" />
 <br><br>
 <img width="1408" height="768" alt="1001322465" src="https://github.com/user-attachments/assets/7544055d-2064-41de-8402-61dc877faf31" />
