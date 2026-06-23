@@ -1,12 +1,6 @@
 <img width="1408" height="768" alt="1001322514" src="https://github.com/user-attachments/assets/9ba949b8-0c9c-4a98-9ccb-6e8d59797d28" />
 <br>
-Audio Preview
-<br><br>
-
-
 https://github.com/user-attachments/assets/eddeb2de-5bff-4a68-b241-72da6fc4a8a5
-
-
 <br><br>
 <img width="540" height="304" alt="1001322509" src="https://github.com/user-attachments/assets/8e5f3b6a-682c-4e30-bf32-12a02ddc7243" />
 <br><br>
