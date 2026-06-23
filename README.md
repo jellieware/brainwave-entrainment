@@ -22,7 +22,7 @@ This program is based on "Minnaert's formula", "Dillon Baston" and "Van Den Doel
 <br><br>
 *Note: No Audio files are used, all the sounds are synthetic and random.
 <br><br>
-Compile with: "gcc -O3 bwe.c -o bwe -lasound -lm"
+Compile on Linux or Android(Termux) with: "gcc -O3 bwe.c -o bwe -lasound -lm"
 <br><br>
 sudo apt install pipewire-audio-client-libraries pipewire-alsa
 <br><br>
