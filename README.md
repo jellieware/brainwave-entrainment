@@ -28,4 +28,6 @@ sudo apt install pipewire-audio-client-libraries pipewire-alsa
 <br><br>
 sudo apt install libasound2-dev
 <br><br>
+This program was created for relaxation/entertainment purposes.
+<br><br>
 Thank you!
