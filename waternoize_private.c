@@ -1,4 +1,5 @@
 // author:alex.terranova.2026
+// arecord -d 10 -f cd output.wav
 #include <alsa/asoundlib.h>
 #include <math.h>
 #include <pthread.h>
