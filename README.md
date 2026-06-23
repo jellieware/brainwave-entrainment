@@ -2,19 +2,9 @@
 
 <img width="1024" height="1024" alt="1000772461" src="https://github.com/user-attachments/assets/32cea55a-7592-4731-837a-f9d73821473d" />
 <br><br>
-
-
 <img width="540" height="304" alt="1001322509" src="https://github.com/user-attachments/assets/8e5f3b6a-682c-4e30-bf32-12a02ddc7243" />
-
-
-
-
-
 <br><br>
-
 <img width="1408" height="768" alt="1001322465" src="https://github.com/user-attachments/assets/7544055d-2064-41de-8402-61dc877faf31" />
-
-
 <br><br>
 This program will generate a synthetic babbling brook with delta binaural beats. Use headphones with caution! Press "ctrl-c" at any time to exit.
 <br><br>
