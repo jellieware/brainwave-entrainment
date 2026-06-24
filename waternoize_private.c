@@ -870,10 +870,19 @@ void generate_audio_frame(float *buffer, int num_samples, float volume,
   float dt = 1.0f / 44100.0f;
   static float last_bubble_sample[MAX_ACTIVE_BUBBLES] = {0.0f};
   static float last_bubble_sample_2[MAX_ACTIVE_BUBBLES] = {0.0f};
-  int spawn_count = 3 + (num_splashes / 5);
-  for (int b = 0; b < spawn_count; b++) {
-    spawn_bounded_bubble(volume, speed, min_r, max_r);
-  }
+ // int spawn_count = 3 + (num_splashes / 5);
+  // Inside generate_audio_frame...
+float spawn_chance = 0.40f; // 40% chance
+int spawn_count = 3 + ( num_splashes / 5);
+for ( int b = 0; b < spawn_count; b++) {
+    // Generate a random float between 0.0 and 1.0
+    float roll = (float)rand() / (float)RAND_MAX;
+    
+    // Only spawn the bubble if the roll falls within the spawn chance
+    if (roll < spawn_chance) {
+        spawn_bounded_bubble( volume, speed, min_r, max_r);
+    }
+}
   const float jitter_rate = 2.0f; 
   const float jitter_depth = 0.03f;   
   for (int b = 0; b < MAX_ACTIVE_BUBBLES; b++) {
@@ -942,7 +951,7 @@ void *loop_one(void *arg) {
   float max_splash_radius = 0.090f;
   float volume_var = 0.75f;
   int number_splashes_var = 60;
-  float speed_var = 0.0001f;
+  float speed_var = 1.0f;
   printf("");
   if ((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) <
       0) {
