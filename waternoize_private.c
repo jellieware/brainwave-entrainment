@@ -950,7 +950,7 @@ void *loop_one(void *arg) {
   float min_splash_radius = 0.0020f;
   float max_splash_radius = 0.090f;
   float volume_var = 0.75f;
-  int number_splashes_var = 60;
+  int number_splashes_var = 360;
   float speed_var = 1.0f;
   printf("");
   if ((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) <
