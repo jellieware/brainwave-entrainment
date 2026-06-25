@@ -798,6 +798,195 @@ void render_sph_smooth_to_buffer(float *buffer, unsigned int num_samples,
     buffer[s] = final_out;
   }
 }
+#include <string.h>
+
+#define SHARED_SPACE_SIZE 8192
+#define SHARED_SPACE_MASK (SHARED_SPACE_SIZE - 1)
+
+typedef struct {
+    float acoustic_pressure[SHARED_SPACE_SIZE];
+    int write_pos;
+} FluidAcousticMedium;
+
+// Global structure representing the physical pool of water
+static FluidAcousticMedium global_water_pool = { {0.0f}, 0 };
+/**
+ * Processes a block of audio samples through an independent physical simulation.
+ * Allows overlapping water splashes to dynamically cross-modulate and ripple against each other.
+ */
+void apply_cross_splash_ripples(float *buffer, int num_samples) {
+    // 1-Time safe execution sweep to clear garbage computer RAM memory
+    static int pool_ready = 0;
+    if (!pool_ready) {
+        memset(global_water_pool.acoustic_pressure, 0, sizeof(global_water_pool.acoustic_pressure));
+        global_water_pool.write_pos = 0;
+        pool_ready = 1;
+    }
+
+    // Fixed acoustic physical delay offsets (prime gaps to remove metallic ringing)
+    static const int nodes[3] = { 431, 1013, 2129 };
+    static const float coupling_gains[3] = { 0.18f, 0.12f, 0.06f };
+
+    for (int i = 0; i < num_samples; i++) {
+        float dry_input = buffer[i];
+
+        // Read environmental energy from different physical nodes in the water pool
+        float environmental_energy = 0.0f;
+        for (int n = 0; n < 3; n++) {
+            int read_pos = (global_water_pool.write_pos - nodes[n]) & SHARED_SPACE_MASK;
+            environmental_energy += global_water_pool.acoustic_pressure[read_pos] * coupling_gains[n];
+        }
+
+        // Low-pass filter effect to mimic underwater acoustic damping absorption
+        static float lp_state = 0.0f;
+        float alpha = 0.22f; 
+        lp_state = (alpha * environmental_energy) + ((1.0f - alpha) * lp_state);
+
+        // CROSS-INTERACTION ENGINE:
+        // Use non-linear phase distortion to let the echoes modulate the incoming waves
+        float wave_collision = sinf(dry_input * 1.5f + lp_state * 0.45f) * 0.60f;
+
+        // Feed back the localized explosion mix into our shared global simulation medium
+        // Lower gain coefficients completely guarantee that NaN/silence blowouts cannot happen
+        float mix_node = (dry_input * 0.25f) + (lp_state * 0.10f);
+        
+        // Anti-denormal processor lines to preserve CPU performance metrics
+        if (mix_node > -1e-15f && mix_node < 1e-15f) mix_node = 0.0f;
+        
+        global_water_pool.acoustic_pressure[global_water_pool.write_pos] = mix_node;
+        global_water_pool.write_pos = (global_water_pool.write_pos + 1) & SHARED_SPACE_MASK;
+
+        // Sum the clean pristine bubbles alongside the organic collision tails
+        buffer[i] = dry_input + (wave_collision * 0.30f);
+    }
+}
+
+
+
+#define GRID_N 32
+#define GRID_SIZE ((GRID_N + 2) * (GRID_N + 2))
+#define IX(i, j) ((i) + (GRID_N + 2) * (j))
+
+// Global static memory grids to prevent allocation overhead inside the audio loop
+static float fluid_u[GRID_SIZE];
+static float fluid_v[GRID_SIZE];
+static float fluid_u_prev[GRID_SIZE];
+static float fluid_v_prev[GRID_SIZE];
+static float fluid_d[GRID_SIZE];
+static float fluid_d_prev[GRID_SIZE];
+
+
+void set_bnd(int N, int b, float *x) {
+    for (int i = 1; i <= N; i++) {
+        x[IX(0, i)]     = (b == 1) ? -x[IX(1, i)] : x[IX(1, i)];
+        x[IX(N + 1, i)] = (b == 1) ? -x[IX(N, i)] : x[IX(N, i)];
+        x[IX(i, 0)]     = (b == 2) ? -x[IX(i, 1)] : x[IX(i, 1)];
+        x[IX(i, N + 1)] = (b == 2) ? -x[IX(i, N)] : x[IX(i, N)];
+    }
+    x[IX(0, 0)]         = 0.5f * (x[IX(1, 0)] + x[IX(0, 1)]);
+    x[IX(0, N + 1)]     = 0.5f * (x[IX(1, N + 1)] + x[IX(0, N)]);
+    x[IX(N + 1, 0)]     = 0.5f * (x[IX(N, 0)] + x[IX(N + 1, 1)]);
+    x[IX(N + 1, N + 1)] = 0.5f * (x[IX(N, N + 1)] + x[IX(N + 1, N)]);
+}
+
+void lin_solve(int N, int b, float *x, float *x0, float a, float c) {
+    float cRecip = 1.0f / c;
+    for (int k = 0; k < 20; k++) {
+        for (int j = 1; j <= N; j++) {
+            for (int i = 1; i <= N; i++) {
+                x[IX(i, j)] = (x0[IX(i, j)] + a * (x[IX(i + 1, j)] + x[IX(i - 1, j)] + 
+                               x[IX(i, j + 1)] + x[IX(i, j - 1)])) * cRecip;
+            }
+        }
+        set_bnd(N, b, x);
+    }
+}
+
+void add_source(int N, float *x, float *s, float dt) {
+    int size = (N + 2) * (N + 2);
+    for (int i = 0; i < size; i++) {
+        x[i] += dt * s[i];
+    }
+}
+
+void diffuse(int N, int b, float *x, float *x0, float diff, float dt) {
+    float a = dt * diff * N * N;
+    lin_solve(N, b, x, x0, a, 1.0f + 4.0f * a);
+}
+
+void advect(int N, int b, float *d, float *d0, float *u, float *v, float dt) {
+    float dt0 = dt * N;
+    for (int j = 1; j <= N; j++) {
+        for (int i = 1; i <= N; i++) {
+            float x = (float)i - dt0 * u[IX(i, j)];
+            float y = (float)j - dt0 * v[IX(i, j)];
+            
+            if (x < 0.5f) x = 0.5f; 
+            if (x > (float)N + 0.5f) x = (float)N + 0.5f;
+            if (y < 0.5f) y = 0.5f; 
+            if (y > (float)N + 0.5f) y = (float)N + 0.5f;
+            
+            int i0 = (int)x; int i1 = i0 + 1;
+            int j0 = (int)y; int j1 = j0 + 1;
+            
+            float s1 = x - (float)i0; float s0 = 1.0f - s1;
+            float t1 = y - (float)j0; float t0 = 1.0f - t1;
+            
+            d[IX(i, j)] = s0 * (t0 * d0[IX(i0, j0)] + t1 * d0[IX(i0, j1)]) +
+                          s1 * (t0 * d0[IX(i1, j0)] + t1 * d0[IX(i1, j1)]);
+        }
+    }
+    set_bnd(N, b, d);
+}
+
+void project(int N, float *u, float *v, float *p, float *div) {
+    for (int j = 1; j <= N; j++) {
+        for (int i = 1; i <= N; i++) {
+            div[IX(i, j)] = -0.5f * (u[IX(i + 1, j)] - u[IX(i - 1, j)] + 
+                                    v[IX(i, j + 1)] - v[IX(i, j - 1)]) / (float)N;
+            p[IX(i, j)] = 0.0f;
+        }
+    }
+    set_bnd(N, 0, div); set_bnd(N, 0, p);
+    lin_solve(N, 0, p, div, 1.0f, 4.0f);
+    
+    for (int j = 1; j <= N; j++) {
+        for (int i = 1; i <= N; i++) {
+            u[IX(i, j)] -= 0.5f * (float)N * (p[IX(i + 1, j)] - p[IX(i - 1, j)]);
+            v[IX(i, j)] -= 0.5f * (float)N * (p[IX(i, j + 1)] - p[IX(i, j - 1)]);
+        }
+    }
+    set_bnd(N, 1, u); set_bnd(N, 2, v);
+}
+
+void vel_step(int N, float *u, float *v, float *u0, float *v0, float visc, float dt) {
+    add_source(N, u, u0, dt); add_source(N, v, v0, dt);
+    
+    float *tmp;
+    tmp = u; u = u0; u0 = tmp; diffuse(N, 1, u, u0, visc, dt);
+    tmp = v; v = v0; v0 = tmp; diffuse(N, 2, v, v0, visc, dt);
+    
+    project(N, u, v, u0, v0);
+    
+    tmp = u; u = u0; u0 = tmp; 
+    tmp = v; v = v0; v0 = tmp;
+    
+    advect(N, 1, u, u0, u0, v0, dt); 
+    advect(N, 2, v, v0, u0, v0, dt);
+    
+    project(N, u, v, u0, v0);
+}
+
+void dens_step(int N, float *x, float *x0, float *u, float *v, float diff, float dt) {
+    add_source(N, x, x0, dt);
+    float *tmp = x; x = x0; x0 = tmp;
+    diffuse(N, 0, x, x0, diff, dt);
+    tmp = x; x = x0; x0 = tmp;
+    advect(N, 0, x, x0, u, v, dt);
+}
+
+
+
 typedef struct {
   int active;
   float current_time;
@@ -913,7 +1102,7 @@ for ( int b = 0; b < spawn_count; b++) {
       float smudged_sample =
           (alpha * stage1) + ((1.0f - alpha) * last_bubble_sample_2[b]);
       last_bubble_sample_2[b] = smudged_sample;
-      float bubble_gain = 10.0f;
+      float bubble_gain = 20.0f;
       buffer[i] += smudged_sample * bubble_gain;
       bubble_poolyyy[b].current_time += dt;
       if (envelope < 0.001f) {
@@ -931,6 +1120,7 @@ for ( int b = 0; b < spawn_count; b++) {
         (filter_alpha * buffer[i]) + ((1.0f - filter_alpha) * last_filter_out);
     last_filter_out = filtered_sample;
     buffer[i] = filtered_sample;
+    //buffer[i] *= 2.0f; 
     if (buffer[i] > 1.0f)
       buffer[i] = 1.0f;
     else if (buffer[i] < -1.0f)
@@ -949,8 +1139,8 @@ void *loop_one(void *arg) {
     bubble_poolyyy[i].active = 0;
   float min_splash_radius = 0.0020f;
   float max_splash_radius = 0.090f;
-  float volume_var = 0.75f;
-  int number_splashes_var = 360;
+  float volume_var = 1.75f;
+  int number_splashes_var = 30;
   float speed_var = 1.0f;
   printf("");
   if ((err = snd_pcm_open(&handle, "default", SND_PCM_STREAM_PLAYBACK, 0)) <
@@ -967,9 +1157,17 @@ void *loop_one(void *arg) {
     snd_pcm_close(handle);
     return 0;
   }
-  while (1) {
+  /*while (1) {
     generate_audio_frame(buffer, PERIOD_SIZE, volume_var, number_splashes_var,
                          speed_var, min_splash_radius, max_splash_radius);
+    apply_cross_splash_ripples(buffer, PERIOD_SIZE);
+    for (int i = 0; i < PERIOD_SIZE; i++) {
+        global_time += 1.0f / SAMPLE_RATE;
+
+        if (buffer[i] > 1.0f) buffer[i] = 1.0f;
+        else if (buffer[i] < -1.0f) buffer[i] = -1.0f;
+        else buffer[i] = buffer[i] - (1.0f / 3.0f) * powf(buffer[i], 3.0f);
+    }
     snd_pcm_sframes_t written = snd_pcm_writei(handle, buffer, PERIOD_SIZE);
     if (written < 0) {
       written = snd_pcm_recover(handle, written, 0);
@@ -977,7 +1175,343 @@ void *loop_one(void *arg) {
         snd_pcm_prepare(handle);
       }
     }
-  }
+  }*/
+   /*   while (1) {
+        // Step A: Reset and add sources
+        for (int i = 0; i < GRID_SIZE; i++) {
+            fluid_u_prev[i] = 0.0f; fluid_v_prev[i] = 0.0f; fluid_d_prev[i] = 0.0f;
+        }
+        if ((rand() % 10) == 0) { // Random injection
+            int rx = 1 + (rand() % GRID_N); int ry = 1 + (rand() % GRID_N);
+            fluid_u_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 10.0f - 5.0f;
+            fluid_v_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 10.0f - 5.0f;
+            fluid_d_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 20.0f;
+        }
+
+        // Step B: Run fluid simulation (Stam solver)
+        float dt = 0.1f;
+        vel_step(GRID_N, fluid_u, fluid_v, fluid_u_prev, fluid_v_prev, 0.0001f, dt);
+        dens_step(GRID_N, fluid_d, fluid_d_prev, fluid_u, fluid_v, 0.0001f, dt);
+
+        // Step C: Map fluid kinetic energy to audio parameters
+        float energy = 0.0f;
+        for (int i = 0; i < GRID_SIZE; i++) energy += sqrtf(fluid_u[i]*fluid_u[i] + fluid_v[i]*fluid_v[i]);
+        energy /= (float)(GRID_N * GRID_N);
+
+       // volume_var = fminf(1.0f, 0.2f + energy * 0.5f);
+       volume_var = fminf(1.0f, 0.5f + energy * 0.7f); // Raised baseline from 0.2f to 0.5f
+        number_splashes_var = fminf(200, 20 + (int)(energy * 120.0f));
+        speed_var = 1.0f + energy * 4.0f;
+
+        // Step D: Generate audio and write to buffer
+        generate_audio_frame(buffer, PERIOD_SIZE, volume_var, number_splashes_var, speed_var, min_splash_radius, max_splash_radius);
+        snd_pcm_writei(handle, buffer, PERIOD_SIZE);
+    }*/
+        // Add these persistent counters above your while (1) loop
+    int burst_cooldown = 0;
+    int frames_since_last_splash = 0;
+
+/*    while (1) {
+        // 1. Reset your previous frame's injection arrays
+        for (int i = 0; i < GRID_SIZE; i++) {
+            fluid_u_prev[i] = 0.0f; 
+            fluid_v_prev[i] = 0.0f; 
+            fluid_d_prev[i] = 0.0f;
+        }
+
+        // 2. Decrement the cooldown timer
+        if (burst_cooldown > 0) {
+            burst_cooldown--;
+        }
+
+        // 3. Only inject a splash force if the cooldown is over and a random chance hits
+        // This creates distinct, separate impact events instead of a single stream
+        if (burst_cooldown == 0 && (rand() % 45) == 0) { 
+            // Pick a random grid zone away from the strict borders
+            int rx = 4 + (rand() % (GRID_N - 8)); 
+            int ry = 4 + (rand() % (GRID_N - 8));
+            
+            // Inject a strong, high-velocity directional punch
+            fluid_u_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 45.0f - 22.5f;
+            fluid_v_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 45.0f - 22.5f;
+            fluid_d_prev[IX(rx, ry)] = 30.0f; // High density mass input
+
+            // Also inject smaller ripples around the primary splash point
+            fluid_u_prev[IX(rx+1, ry)] = fluid_u_prev[IX(rx, ry)] * 0.5f;
+            fluid_v_prev[IX(rx, ry+1)] = fluid_v_prev[IX(rx, ry)] * 0.5f;
+
+            // Enforce a cooldown of 15 to 30 audio frames before the next splash can happen
+            burst_cooldown = 15 + (rand() % 15);
+        }
+
+        // 4. Step the fluid simulation forward
+                // 4. Step the fluid simulation forward
+        float dt = 0.1f;
+        vel_step(GRID_N, fluid_u, fluid_v, fluid_u_prev, fluid_v_prev, 0.0001f, dt);
+        dens_step(GRID_N, fluid_d, fluid_d_prev, fluid_u, fluid_v, 0.0001f, dt);
+
+        // 5. Calculate MAX kinetic energy instead of average
+        float max_energy = 0.0f;
+        for (int j = 1; j <= GRID_N; j++) {
+            for (int i = 1; i <= GRID_N; i++) {
+                float cell_energy = sqrtf(fluid_u[IX(i, j)] * fluid_u[IX(i, j)] + 
+                                          fluid_v[IX(i, j)] * fluid_v[IX(i, j)]);
+                if (cell_energy > max_energy) {
+                    max_energy = cell_energy;
+                }
+            }
+        }
+
+        // 6. Map parameters dynamically with a low floor
+        if (max_energy < 0.05f) {
+            // Silence when the water is perfectly still
+            volume_var = 0.0f;
+            number_splashes_var = 0;
+            speed_var = 1.0f;
+        } else {
+            // Clean mapping: max_energy scales parameters from a loud baseline
+            volume_var = fminf(1.0f, 0.4f + (max_energy * 0.05f)); 
+            number_splashes_var = fminf(250, 20 + (int)(max_energy * 4.0f));
+            speed_var = 1.0f + (max_energy * 0.1f);
+        }
+
+        // 7. Generate audio and render to ALSA
+        generate_audio_frame(buffer, PERIOD_SIZE, volume_var, number_splashes_var, speed_var, min_splash_radius, max_splash_radius);
+        snd_pcm_writei(handle, buffer, PERIOD_SIZE);
+
+    }*/
+    
+        // Add or modify these state variables right above your while (1) loop
+    int frames_until_next_splash = 0;
+
+  /*  while (1) {
+        // 1. Clear previous frame's impulse arrays
+        for (int i = 0; i < GRID_SIZE; i++) {
+            fluid_u_prev[i] = 0.0f; 
+            fluid_v_prev[i] = 0.0f; 
+            fluid_d_prev[i] = 0.0f;
+        }
+
+        // 2. Decrement the structural timing counter
+        if (frames_until_next_splash > 0) {
+            frames_until_next_splash--;
+        }
+
+        // 3. Trigger rapid, overlapping bursts
+        // A low frame window allows multiple splashes to co-exist in the same grid
+        if (frames_until_next_splash == 0 && (rand() % 12) == 0) { 
+            // Random localized grid coordinates away from boundaries
+            int rx = 4 + (rand() % (GRID_N - 8)); 
+            int ry = 4 + (rand() % (GRID_N - 8));
+            
+            // Strong, distinct vector thrusts
+            fluid_u_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 35.0f - 17.5f;
+            fluid_v_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 35.0f - 17.5f;
+            fluid_d_prev[IX(rx, ry)] = 25.0f; 
+
+            // Set a very short cooldown (only 2 to 6 frames) so another stream can overlap immediately
+            frames_until_next_splash = 2 + (rand() % 5);
+        }
+
+        // 4. Step the fluid simulation forward
+        float dt = 0.1f;
+        vel_step(GRID_N, fluid_u, fluid_v, fluid_u_prev, fluid_v_prev, 0.0001f, dt);
+        dens_step(GRID_N, fluid_d, fluid_d_prev, fluid_u, fluid_v, 0.0001f, dt);
+
+        // 5. Compute total active grid energy (combines all simultaneous waves)
+        float total_energy = 0.0f;
+        for (int j = 1; j <= GRID_N; j++) {
+            for (int i = 1; i <= GRID_N; i++) {
+                total_energy += sqrtf(fluid_u[IX(i, j)] * fluid_u[IX(i, j)] + 
+                                       fluid_v[IX(i, j)] * fluid_v[IX(i, j)]);
+            }
+        }
+        // Normalize energy across the simulated zone to create smooth polyphonic tracking
+        total_energy /= (float)GRID_SIZE;
+
+        // 6. Map parameters dynamically 
+        // No hard cutoff gate ensures overlapping streams blend cleanly into each other
+        volume_var = fminf(1.0f, 0.2f + (total_energy * 2.5f)); 
+        number_splashes_var = fminf(250, 10 + (int)(total_energy * 600.0f));
+        speed_var = 1.0f + (total_energy * 12.0f);
+
+        // 7. Generate audio and render to ALSA
+        generate_audio_frame(buffer, PERIOD_SIZE, volume_var, number_splashes_var, speed_var, min_splash_radius, max_splash_radius);
+        snd_pcm_writei(handle, buffer, PERIOD_SIZE);
+    }*/
+        // Add or modify these state variables right above your while (1) loop
+    int frames_until_next_burst = 0;
+
+/*    while (1) {
+        // 1. Clear previous frame's impulse arrays
+        for (int i = 0; i < GRID_SIZE; i++) {
+            fluid_u_prev[i] = 0.0f; 
+            fluid_v_prev[i] = 0.0f; 
+            fluid_d_prev[i] = 0.0f;
+        }
+
+        // 2. Decrement the structural timing counter
+        if (frames_until_next_burst > 0) {
+            frames_until_next_burst--;
+        }
+
+        // 3. Trigger multiple overlapping streams at once
+        if (frames_until_next_burst == 0 && (rand() % 8) == 0) { 
+            
+            // Loop to drop 3 to 6 COMPLETELY DISTINCT splash locations on the SAME frame
+            int concurrent_streams = 3 + (rand() % 4); 
+            for (int s = 0; s < concurrent_streams; s++) {
+                
+                // Random isolated grid coordinates away from boundaries
+                int rx = 3 + (rand() % (GRID_N - 6)); 
+                int ry = 3 + (rand() % (GRID_N - 6));
+                
+                // Energetic, chaotic vector thrusts for each independent point
+                fluid_u_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 40.0f - 20.0f;
+                fluid_v_prev[IX(rx, ry)] = ((float)rand() / RAND_MAX) * 40.0f - 20.0f;
+                fluid_d_prev[IX(rx, ry)] = 30.0f; 
+            }
+
+            // Enforce an ultra-short 1 to 3 frame delay before the next wave cluster drops
+            frames_until_next_burst = 1 + (rand() % 3);
+        }
+
+        // 4. Step the fluid simulation forward
+        float dt = 0.1f;
+        vel_step(GRID_N, fluid_u, fluid_v, fluid_u_prev, fluid_v_prev, 0.0001f, dt);
+        dens_step(GRID_N, fluid_d, fluid_d_prev, fluid_u, fluid_v, 0.0001f, dt);
+
+        // 5. Compute total active grid energy (combines all massive concurrent waves)
+        float total_energy = 0.0f;
+        for (int j = 1; j <= GRID_N; j++) {
+            for (int i = 1; i <= GRID_N; i++) {
+                total_energy += sqrtf(fluid_u[IX(i, j)] * fluid_u[IX(i, j)] + 
+                                       fluid_v[IX(i, j)] * fluid_v[IX(i, j)]);
+            }
+        }
+        // Normalize energy across the simulated zone
+        total_energy /= (float)GRID_SIZE;
+
+        // 6. Map parameters dynamically with a dense, highly sensitive ceiling
+        volume_var = fminf(1.0f, 0.3f + (total_energy * 3.5f)); 
+        number_splashes_var = fminf(250, 25 + (int)(total_energy * 850.0f)); // Maxes out bubble density quickly
+        speed_var = 1.0f + (total_energy * 15.0f);
+
+        // 7. Generate audio and render to ALSA
+        generate_audio_frame(buffer, PERIOD_SIZE, volume_var, number_splashes_var, speed_var, min_splash_radius, max_splash_radius);
+        snd_pcm_writei(handle, buffer, PERIOD_SIZE);
+    }*/
+/*        while (1) {
+        // 1. Clear previous frame's impulse arrays
+        for (int i = 0; i < GRID_SIZE; i++) {
+            fluid_u_prev[i] = 0.0f; 
+            fluid_v_prev[i] = 0.0f; 
+            fluid_d_prev[i] = 0.0f;
+        }
+
+        // 2. RUN A PER-CELL PROBABILITY CHECK (Massive multi-stream overlap)
+        // Every cell has a 2% chance to erupt independently EVERY frame.
+        // For a 32x32 grid, this drops ~20 new overlapping streams every single loop iteration.
+        for (int j = 2; j <= GRID_N - 1; j++) {
+            for (int i = 2; i <= GRID_N - 1; i++) {
+                if ((rand() % 50) == 0) { 
+                    // Energetic multi-directional thrusts hitting simultaneously
+                    float angle = ((float)rand() / RAND_MAX) * 2.0f * M_PI;
+                    float force = 15.0f + (((float)rand() / RAND_MAX) * 25.0f);
+                    
+                    fluid_u_prev[IX(i, j)] = cosf(angle) * force;
+                    fluid_v_prev[IX(i, j)] = sinf(angle) * force;
+                    fluid_d_prev[IX(i, j)] = 20.0f; 
+                }
+            }
+        }
+
+        // 3. Step the fluid simulation forward
+        float dt = 0.1f;
+        vel_step(GRID_N, fluid_u, fluid_v, fluid_u_prev, fluid_v_prev, 0.0001f, dt);
+        dens_step(GRID_N, fluid_d, fluid_d_prev, fluid_u, fluid_v, 0.0001f, dt);
+
+        // 4. Compute the combined total grid energy
+        float total_energy = 0.0f;
+        for (int j = 1; j <= GRID_N; j++) {
+            for (int i = 1; i <= GRID_N; i++) {
+                total_energy += sqrtf(fluid_u[IX(i, j)] * fluid_u[IX(i, j)] + 
+                                       fluid_v[IX(i, j)] * fluid_v[IX(i, j)]);
+            }
+        }
+        total_energy /= (float)GRID_SIZE;
+
+        // 5. Map to max out your bubble generation engine completely
+        // Keeps the parameters locked to maximum density and speed windows
+        volume_var = fminf(1.0f, 0.4f + (total_energy * 4.0f)); 
+        number_splashes_var = fminf(254, 40 + (int)(total_energy * 1200.0f)); 
+        speed_var = 1.0f + (total_energy * 20.0f);
+
+        // 6. Generate audio and render to ALSA
+        generate_audio_frame(buffer, PERIOD_SIZE, volume_var, number_splashes_var, speed_var, min_splash_radius, max_splash_radius);
+        snd_pcm_writei(handle, buffer, PERIOD_SIZE);
+    }*/
+        // Add this frame counter above your while (1) loop
+    int fluid_update_tick = 0;
+
+    while (1) {
+        // Clear previous frame's impulse arrays
+        for (int i = 0; i < GRID_SIZE; i++) {
+            fluid_u_prev[i] = 0.0f; 
+            fluid_v_prev[i] = 0.0f; 
+            fluid_d_prev[i] = 0.0f;
+        }
+
+        // Only calculate physics once every 3 audio frames to save CPU
+        fluid_update_tick++;
+        if (fluid_update_tick >= 3) {
+            fluid_update_tick = 0;
+
+            // Per-cell continuous spawn logic
+            for (int j = 2; j <= GRID_N - 1; j++) {
+                for (int i = 2; i <= GRID_N - 1; i++) {
+                    if ((rand() % 60) == 0) { // Slight reduction in density
+                        float angle = ((float)rand() / RAND_MAX) * 2.0f * M_PI;
+                        float force = 10.0f + (((float)rand() / RAND_MAX) * 20.0f);
+                        
+                        fluid_u_prev[IX(i, j)] = cosf(angle) * force;
+                        fluid_v_prev[IX(i, j)] = sinf(angle) * force;
+                        fluid_d_prev[IX(i, j)] = 20.0f; 
+                    }
+                }
+            }
+
+            // Step fluid simulation forward
+            float dt = 0.1f;
+            vel_step(GRID_N, fluid_u, fluid_v, fluid_u_prev, fluid_v_prev, 0.0001f, dt);
+            dens_step(GRID_N, fluid_d, fluid_d_prev, fluid_u, fluid_v, 0.0001f, dt);
+
+            // Compute total grid energy
+            float total_energy = 0.0f;
+            for (int j = 1; j <= GRID_N; j++) {
+                for (int i = 1; i <= GRID_N; i++) {
+                    total_energy += sqrtf(fluid_u[IX(i, j)] * fluid_u[IX(i, j)] + 
+                                           fluid_v[IX(i, j)] * fluid_v[IX(i, j)]);
+                }
+            }
+            total_energy /= (float)GRID_SIZE;
+
+            // Map parameters cleanly
+            volume_var = fminf(0.85f, 0.25f + (total_energy * 2.5f)); 
+            number_splashes_var = fminf(180, 20 + (int)(total_energy * 600.0f)); 
+            speed_var = 1.0f + (total_energy * 10.0f);
+        }
+
+        // Generate audio and render to ALSA (runs every single period)
+        generate_audio_frame(buffer, PERIOD_SIZE, volume_var, number_splashes_var, speed_var, min_splash_radius, max_splash_radius);
+        snd_pcm_writei(handle, buffer, PERIOD_SIZE);
+    }
+
+
+
+
+
+
   snd_pcm_drain(handle);
   snd_pcm_close(handle);
   return 0;
