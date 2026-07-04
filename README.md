@@ -59,13 +59,13 @@ cd ..<br>
 nano /usr/etc/pulse/default.pa<br>
 
 Paste the following line at the very bottom:
-<br>
+<br><br>
 load-module module-simple-protocol-tcp source=auto_null.monitor record=true port=12345 rate=44100
+<br><br>
+CTRL-X<br>
+Y<br>
+CTRL-M<br>
 <br>
-CTRL-X
-Y
-CTRL-M
-
 Start "Simple Protocol Player"
 Press "Play" button
 
