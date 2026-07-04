@@ -54,14 +54,14 @@ waternoize
 
 Download "Simple Protocol Player" from the google playstore
 
-cd ~/
-cd ..
-nano /usr/etc/pulse/default.pa
+cd ~/<br>
+cd ..<br>
+nano /usr/etc/pulse/default.pa<br>
 
 Paste the following line at the very bottom:
-
+<br>
 load-module module-simple-protocol-tcp source=auto_null.monitor record=true port=12345 rate=44100
-
+<br>
 CTRL-X
 Y
 CTRL-M
