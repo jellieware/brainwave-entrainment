@@ -38,7 +38,7 @@ apt-get update
 
 apt-get install build-essential
 
-apt-get install alsa-lib
+apt-get install alsa-lib alsa-utils alsa-plugins
 
 *After program has been compiled:
 
@@ -50,8 +50,26 @@ chmod +x /data/data/com.termux/files/usr/bin/waternoize
 
 waternoize
 
+*Android 16 or above update:
 
+Download "Simple Protocol Player" from the google playstore
 
+cd ~/
+cd ..
+nano /usr/etc/pulse/default.pa
+
+Paste the following line at the very bottom:
+
+load-module module-simple-protocol-tcp source=auto_null.monitor record=true port=12345 rate=44100
+
+CTRL-X
+Y
+CTRL-M
+
+Start "Simple Protocol Player"
+Press "Play" button
+
+<img width="1080" height="2400" alt="1001323926" src="https://github.com/user-attachments/assets/27359259-643a-4ca0-bfca-f6a45a13c0f4" />
 
 ***Linux Requirements:***
 
