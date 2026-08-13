@@ -1,7 +1,7 @@
 Audio Preview:
 [https://whyp.it/tracks/351104/waternoize?token=cJMN6](https://whyp.it/tracks/351192/waternoize-private-ultimate?token=bRPeS)
 <br><br>
-<img width="540" height="304" alt="1001322509" src="https://github.com/user-attachments/assets/8e5f3b6a-682c-4e30-bf32-12a02ddc7243" />
+<img width="320" height="180" alt="1000075498" src="https://github.com/user-attachments/assets/439c9911-e4db-4982-b6f2-e03bd4c6b06c" />
 <br><br>
 <img width="1408" height="768" alt="1001322465" src="https://github.com/user-attachments/assets/7544055d-2064-41de-8402-61dc877faf31" />
 <br><br>
