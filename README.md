@@ -1,3 +1,5 @@
+<img width="500" height="500" alt="1000078709" src="https://github.com/user-attachments/assets/9366e333-1b56-4a01-8e4c-fddc89d5dcf4" />
+
 # Audio Preview
 
 https://youtube.com/shorts/BH82JcXv5JU?feature=shared
