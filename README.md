@@ -39,9 +39,8 @@ nano /usr/etc/pulse/default.pa
  * Paste the following line at the very bottom:<br>
    load-module module-simple-protocol-tcp source=auto_null.monitor record=true port=12345 rate=44100
 
- * Save and exit (CTRL-X, Y, CTRL-M).
+ * Save and exit (CTRL-X, Y, CTRL-M).<br>
  * Start Simple Protocol Player and press the Play button.
-<img width="1080" height="2400" alt="1001323926" src="[https://github.com/user-attachments/assets/27359259-643a-4ca0-bfca-f6a45a13c0f4](https://github.com/user-attachments/assets/27359259-643a-4ca0-bfca-f6a45a13c0f4)" />
 
 # Linux Requirements
 apt-get update<br>
