@@ -8,7 +8,7 @@ https://youtube.com/shorts/BH82JcXv5JU?feature=shared
 Press Ctrl+C or CTRL+\ at any time to exit.
 
 # Based on Algorithms
- * "Minnaert's formula"
+ * Minnaert's formula
  * Dillon Baston
  * Van Den Doel
  * Jos Stams<br><br>
