@@ -1,8 +1,5 @@
 # Audio Preview
 https://whyp.it/tracks/351104/waternoize?token=cJMN6
-<img width="320" height="180" alt="1000075498" src="[https://github.com/user-attachments/assets/439c9911-e4db-4982-b6f2-e03bd4c6b06c](https://github.com/user-attachments/assets/439c9911-e4db-4982-b6f2-e03bd4c6b06c)" />
-<img width="1408" height="768" alt="1001322465" src="[https://github.com/user-attachments/assets/7544055d-2064-41de-8402-61dc877faf31](https://github.com/user-attachments/assets/7544055d-2064-41de-8402-61dc877faf31)" />
-<img width="1915" height="821" alt="1001322590" src="[https://github.com/user-attachments/assets/c06dd451-1be6-4822-9879-2b12a10e0218](https://github.com/user-attachments/assets/c06dd451-1be6-4822-9879-2b12a10e0218)" />
 
 # This program will generate a synthetic babbling brook with delta binaural beats.
 > Warning: Use headphones with caution!
@@ -34,12 +31,12 @@ waternoize
 
 # Android 16 or Above Update if sound does not work:
  * Download Simple Protocol Player from the Google Play Store.<br>
- * Run the following commands in your terminal:
+ * Run the following commands in your terminal:<br>
    cd ~/<br>
 cd ..<br>
 nano /usr/etc/pulse/default.pa
 
- * Paste the following line at the very bottom:
+ * Paste the following line at the very bottom:<br>
    load-module module-simple-protocol-tcp source=auto_null.monitor record=true port=12345 rate=44100
 
  * Save and exit (CTRL-X, Y, CTRL-M).
