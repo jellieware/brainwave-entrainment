@@ -13,7 +13,7 @@ Press Ctrl+C or CTRL+\ at any time to exit.
  * "Minnaert's formula"
  * Dillon Baston
  * Van Den Doel
- * Jos Stams
+ * Jos Stams<br><br>
 Note: No audio files are used; all sounds are synthetic and random.
 
 # Compilation
