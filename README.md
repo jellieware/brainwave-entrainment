@@ -1,5 +1,6 @@
 # Audio Preview
-https://whyp.it/tracks/351104/waternoize?token=cJMN6
+
+https://youtube.com/shorts/BH82JcXv5JU?feature=shared
 
 # This program will generate a synthetic babbling brook with delta binaural beats.
 > Warning: Use headphones with caution!
