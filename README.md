@@ -17,7 +17,7 @@ Press Ctrl+C or CTRL+\ at any time to exit.
 Note: No audio files are used; all sounds are synthetic and random.
 
 # Compilation
-Compile on Linux or Android (Termux) with:
+Compile on Linux or Android (Termux) with:<br>
 gcc -O3 waternoize_private.c -o waternoize -lasound -lm
 
 # Android (Termux) Requirements
