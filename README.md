@@ -44,14 +44,13 @@ nano /usr/etc/pulse/default.pa
 <img width="1080" height="2400" alt="1001323926" src="[https://github.com/user-attachments/assets/27359259-643a-4ca0-bfca-f6a45a13c0f4](https://github.com/user-attachments/assets/27359259-643a-4ca0-bfca-f6a45a13c0f4)" />
 
 # Linux Requirements
-apt-get update
-sudo apt install build-essential
-sudo apt install pipewire-audio-client-libraries pipewire-alsa
+apt-get update<br>
+sudo apt install build-essential<br>
+sudo apt install pipewire-audio-client-libraries pipewire-alsa<br>
 sudo apt install libasound2-dev
 
 # After the program has been compiled, run it with:
 ./waternoize
 
-# This program was created for relaxation/entertainment purposes.
+# This program was created for relaxation/entertainment purposes.<br>
 Thank you!
-<img width="500" height="500" alt="1001322599" src="[https://github.com/user-attachments/assets/ba6cb51e-282e-4c52-a2a6-18fd0ad1dd53](https://github.com/user-attachments/assets/ba6cb51e-282e-4c52-a2a6-18fd0ad1dd53)" />
