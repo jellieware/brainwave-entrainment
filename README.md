@@ -33,10 +33,10 @@ chmod +x /data/data/com.termux/files/usr/bin/waternoize
 waternoize
 
 # Android 16 or Above Update if sound does not work:
- * Download Simple Protocol Player from the Google Play Store.
+ * Download Simple Protocol Player from the Google Play Store.<br>
  * Run the following commands in your terminal:
-   cd ~/
-cd ..
+   cd ~/<br>
+cd ..<br>
 nano /usr/etc/pulse/default.pa
 
  * Paste the following line at the very bottom:
