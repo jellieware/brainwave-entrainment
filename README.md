@@ -21,12 +21,12 @@ Compile on Linux or Android (Termux) with:
 gcc -O3 waternoize_private.c -o waternoize -lasound -lm
 
 # Android (Termux) Requirements
-apt-get update
-apt-get install build-essential
+apt-get update<br>
+apt-get install build-essential<br>
 apt-get install alsa-lib alsa-utils alsa-plugins
 
 # After the program has been compiled:
-cp waternoize /data/data/com.termux/files/usr/bin
+cp waternoize /data/data/com.termux/files/usr/bin<br>
 chmod +x /data/data/com.termux/files/usr/bin/waternoize
 
 # Run program with the command:
